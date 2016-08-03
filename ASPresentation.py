@@ -326,10 +326,10 @@ class ASPresentation(object):
         self.integ_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
         self.fraction_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
         self.fraction_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.y_axis_min.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
-        self.y_axis_max.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
-        self.x_axis_min.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
-        self.x_axis_max.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
+        self.y_axis_min.Bind(wx.EVT_SET_CURSOR, self.number_pad)
+        self.y_axis_max.Bind(wx.EVT_SET_CURSOR, self.number_pad)
+        self.x_axis_min.Bind(wx.EVT_SET_CURSOR, self.number_pad)
+        self.x_axis_max.Bind(wx.EVT_SET_CURSOR, self.number_pad)
 
 
         # toggle button plot options
@@ -1464,15 +1464,15 @@ class ASPresentation(object):
 
     def number_pad(self, event):
         from constants import SERVICED
+        #event.Skip()
         if SERVICED:
             SERVICED = False
-            #event.Skip()
             return
         widget = event.GetEventObject()
-        if widget.Name == 'text':
-            widget.Unbind(wx.EVT_CHILD_FOCUS)
-        else:
-            widget.Unbind(wx.EVT_SET_FOCUS)
+        #if widget.Name == 'text':
+            #widget.Bind(wx.EVT_CHILD_FOCUS, None)
+        #else:
+            #widget.Unbind(wx.EVT_SET_FOCUS)
         dlg = wx.Dialog(self.frame, -1, 'Number Entry')
         dlg.SetBackgroundColour("white")
         number = wx.TextCtrl(dlg, -1, str(widget.GetValue()), size=(120, -1))
@@ -1540,21 +1540,18 @@ class ASPresentation(object):
         dlg.SetSizer(sizer)
         dlg.Fit()
         dlg.CenterOnParent()
+        self.stop_button.SetFocus()
         if dlg.ShowModal() == wx.ID_OK:
             try:
                 widget.SetValue(number.GetValue())
             except TypeError:
-                pass
-            try:
-                widget.SetValue(int(float(number.GetValue())))
-            except Exception:
-                pass
+                try:
+                    widget.SetValue(int(float(number.GetValue())))
+                except Exception:
+                    pass
         SERVICED = True
-        if widget.Name == 'text':
-            widget.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
-        else:
-            widget.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.auto_integration.SetFocus()
+        #widget.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
+        #widget.Bind(wx.EVT_SET_FOCUS, self.number_pad)
         #event.Skip()
 
 class HelpPanel(wx.Panel):
