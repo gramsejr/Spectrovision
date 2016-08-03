@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-import gc
 import os
 import wx
 import sys
@@ -18,8 +17,6 @@ if 'wxMSW' in wx.PlatformInfo:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception:
         pass
-
-gc.set_debug(gc.DEBUG_LEAK)
 
 from wx import App
 

@@ -1,10 +1,8 @@
-# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 import logging
 import os
 import platform
 import string
-from tempfile import gettempdir
 
 from ConfigParser import ConfigParser, NoSectionError, NoOptionError
 
@@ -13,12 +11,10 @@ class Config(object):
     def __init__(self, ini_defaults, name):
         super(Config, self).__setattr__('ini_defaults', ini_defaults)
         super(Config, self).__setattr__('class_name', name)
-        directory = os.path.dirname(self.file_name)
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+        self.ensure_ini_path_exists()
 
     @property
-    def file_name(self):
+    def ini_file_name(self):
         system = platform.system()
         if system == "Darwin":
             return os.path.join(os.environ['TMPDIR'],
@@ -28,6 +24,11 @@ class Config(object):
             return os.path.join(os.environ['APPDATA'],
                                 self.DEFAULT_INI_SECTION,
                                 '%s.ini' % self.class_name)
+
+    def ensure_ini_path_exists(self):
+        d = os.path.dirname(self.ini_file_name)
+        if not os.path.exists(d):
+            os.makedirs(d)
 
     def __getattr__(self, k):
         try:

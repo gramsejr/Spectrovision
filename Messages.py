@@ -8,6 +8,7 @@ import wx.lib.masked as masked
 def ok_cancel(window, title, msg):
     dlg = wx.MessageDialog(window, msg, title,
                            wx.OK | wx.CANCEL | wx.ICON_INFORMATION)
+    dlg.CenterOnParent()
     response = dlg.ShowModal() == wx.ID_OK
     dlg.Destroy()
     return response
@@ -26,11 +27,14 @@ def confirmation_message(msg, title):
 
 def progress_dialog(title, msg, window, maximum):
     if maximum:
-        dlg = wx.GenericProgressDialog(title, msg, maximum=maximum, parent=window,
-                                style=wx.PD_CAN_ABORT | wx.PD_APP_MODAL | wx.PD_AUTO_HIDE)
+        dlg = wx.GenericProgressDialog(title, msg, maximum=maximum,
+                                       parent=window,
+                                       style=wx.PD_CAN_ABORT | wx.PD_APP_MODAL
+                                       | wx.PD_AUTO_HIDE)
     else:
         dlg = wx.GenericProgressDialog(title, msg, parent=window,
-                                style=wx.PD_CAN_ABORT | wx.PD_APP_MODAL | wx.PD_AUTO_HIDE)
+                                       style=wx.PD_CAN_ABORT | wx.PD_APP_MODAL
+                                       | wx.PD_AUTO_HIDE)
     dlg.CenterOnScreen()
     return dlg
 
@@ -69,7 +73,8 @@ def open_file_dialog(window, title, wildcard="", current_dir="", current_file=""
         return path
     dlg.Destroy()
 
-def save_file_dialog(window, title, wildcard="", current_dir="", current_file="", overwrite_prompt=True):
+def save_file_dialog(window, title, wildcard="", current_dir="", current_file=""
+                     , overwrite_prompt=True):
     if overwrite_prompt:
         dlg = wx.FileDialog(window, title, current_dir, current_file, wildcard,
                             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)

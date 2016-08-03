@@ -1,80 +1,121 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
-from math import ceil
-import sys
-import gc
-
 import wx
 import wx.lib.newevent
+import matplotlib
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg, \
      NavigationToolbar2Wx
 from matplotlib.figure import Figure
-from matplotlib.widgets import Cursor, Button
+from matplotlib.widgets import Cursor
 
 from constants import IS_MAC, LUX, FOOTCANDLE, RQE, SIGMA_R, SIGMA_FR, \
      CIE_1931, LUX_TO_FOOTCANDLES, PHOTON_FLUX, LUX_MULTIPLIER, ENERGY_FLUX, \
-     ILLUMINANCE, X_LABEL
+     ILLUMINANCE, X_LABEL, RED_FARRED
+
+matplotlib.rcParams['mathtext.default'] = 'regular'
 
 custom_event, CUSTOM_EVT = wx.lib.newevent.NewEvent()
 
+def add_toolbar(sizer, canvas):
+    """adds the pan and zoom tools (and a few others) to a toolbar at the
+    base of the plot panel"""
+    toolbar = NavigationToolbar2Wx(canvas)
+    toolbar.Realize()
+    tw, th = toolbar.GetSizeTuple()
+    fw, fh = canvas.GetSizeTuple()
+    toolbar.SetSize(wx.Size(fw, th))
+    # delete subplots and save image tools
+    if IS_MAC:
+        pass
+    else:
+        toolbar.DeleteToolByPos(8)
+        toolbar.DeleteToolByPos(7)
+    toolbar.SetBackgroundColour("white")
+    sizer.Add(toolbar, 0, wx.EXPAND | wx.BOTTOM | wx.ALL, 0)
+    toolbar.update()
+
+def wavelength_to_rgb(gamma=1.0):
+    """computes the color mapping rgb values where 0 <= r, g, b <= 1."""
+    color_map = []
+    for wavelength in range(340, 1101):
+        wavelength = float(wavelength)
+        if wavelength >= 340 and wavelength <=370:
+            R = 0.0
+            G = 0.0
+            B = 0.0
+        elif wavelength >= 370 and wavelength <= 460:
+            attenuation = (wavelength - 340) / (460 - 340)
+            R = ((-(wavelength - 460) / (460 - 340)) * attenuation) ** gamma
+            G = 0.0
+            B = (1.0 * attenuation) ** gamma
+        elif wavelength >= 460 and wavelength <= 500:
+            R = 0.0
+            G = (0.9 * (wavelength - 460) / (500 - 460)) ** gamma
+            B = 1.0 ** gamma
+        elif wavelength >= 500 and wavelength <= 530:
+            R = 0.0
+            G = 0.9 ** gamma
+            B = (-(wavelength - 530) / (530 - 500)) ** gamma
+        elif wavelength >= 530 and wavelength <= 580:
+            R = ((wavelength - 530) / (580 - 530)) ** gamma
+            G = 0.9 + (0.1 * (wavelength - 530) / (580 - 530)) ** gamma
+            B = 0.0
+        elif wavelength >= 580 and wavelength <= 640:
+            R = 1.0 ** gamma
+            G = (-(wavelength - 640) / (640 - 580)) ** gamma
+            B = 0.0
+        elif wavelength >=640 and wavelength <=680:
+            R = 1.0 ** gamma
+            G = 0.0
+            B = 0.0
+        elif wavelength >= 680 and wavelength <= 740:
+            attenuation = (740 - wavelength) / (740 - 680)
+            R = (attenuation) ** gamma
+            G = 0.0
+            B = 0.0
+        elif wavelength >= 740 and wavelength <=800:
+            attenuation = (-(wavelength - 800 )) / (800 - 740)
+            R = 0.8 - (0.8 * attenuation) ** gamma
+            G = 0.8 - (0.8 * attenuation) ** gamma
+            B = 0.8 - (0.8 * attenuation) ** gamma
+        else:
+            attenuation = (-(wavelength - 1100 )) / (1100 - 800)
+            R = (0.8 * attenuation) ** gamma
+            G = (0.8 * attenuation) ** gamma
+            B = (0.8 * attenuation) ** gamma
+        color_map.append((R, G, B))
+    return color_map
+
+COLOR_MAP = wavelength_to_rgb()
 
 class GraphPanel(wx.Panel):
-    def __init__(self, parent, frame):
+    def __init__(self, parent):
         super(GraphPanel, self).__init__(parent, -1)
         self.SetBackgroundColour((218,238,255))
         self.SetWindowStyle(wx.RAISED_BORDER)
-        self.parent = parent
-        self.frame = frame
-        self.figure = Figure()
-        self.figure.set_facecolor(color='#daeeff')
-        self.sizer = wx.BoxSizer(wx.VERTICAL)
-        self.axes = self.figure.add_subplot(111)
-        self.axes.legend(loc=1)
+        figure = Figure()
+        figure.set_facecolor(color='#daeeff')
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        self.axes = figure.add_subplot(111)
         self.x_data = range(340, 821)
-        self.y_data = [0] * 481
-        self.color_map = self.wavelength_to_rgb()
-        self.axes.plot(self.x_data, self.y_data, label='Scan 1')
-        self.canvas = FigureCanvasWxAgg(self, -1, self.figure)
-        self.figure.tight_layout()
-        self.sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL)
-        self.sizer.AddSpacer(20)
-        self.add_toolbar()
-        self.SetSizer(self.sizer)
-        self.figure.canvas.draw()
-        self.cid1 = self.figure.canvas.mpl_connect('motion_notify_event',
-                                                   self.on_movement)
-        self.cid2 = self.figure.canvas.mpl_connect('button_press_event',
-                                                   self.on_press)
-        self.cid3 = self.figure.canvas.mpl_connect('scroll_event',
-                                                   self.on_scroll)
-        self.cursor = Cursor(self.axes, useblit=True, color='black',
-                             linewidth=1)
-        self.units = ''
-        self.calibrate_mode = False
+        self.axes.plot(self.x_data, [0] * 481, label='Scan 0')
+        self.axes.legend(loc=1)
+        self.canvas = FigureCanvasWxAgg(self, -1, figure)
+        figure.tight_layout()
+        sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL)
+        sizer.AddSpacer(20)
+        add_toolbar(sizer, self.canvas)
+        self.SetSizer(sizer)
+        self.canvas.draw()
+        cid1 = self.canvas.mpl_connect('motion_notify_event', self.on_movement)
+        cid2 = self.canvas.mpl_connect('button_press_event', self.on_press)
+        cid3 = self.canvas.mpl_connect('scroll_event', self.on_scroll)
         self.integ_lines = []
+        self.fractional_lines = []
         self.plot_unit = -1
         self.plot_mode = -1
         self.text = None
-
-    def re_init(self):
-        self.frame = frame
-        self.figure = Figure()
-        self.figure.set_facecolor(color='#daeeff')
-        self.axes = self.figure.add_subplot(111)
-        self.canvas = FigureCanvasWxAgg(self, -1, self.figure)
-        self.figure.tight_layout()
-        self.sizer = wx.BoxSizer(wx.VERTICAL)
-        self.sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL)
-        self.sizer.AddSpacer(20)
-        self.SetSizer(self.sizer)
-        self.cid1 = self.figure.canvas.mpl_connect('motion_notify_event',
-                                                   self.on_movement)
-        self.cid2 = self.figure.canvas.mpl_connect('button_press_event',
-                                                   self.on_press)
-        self.cid3 = self.figure.canvas.mpl_connect('scroll_event',
-                                                   self.on_scroll)
-        self.cursor = Cursor(self.axes, useblit=True, color='black',
-                             linewidth=1)
+        self.x_label = X_LABEL
 
     @property
     def x_axis_limits(self):
@@ -91,9 +132,11 @@ class GraphPanel(wx.Panel):
     @y_axis_limits.setter
     def y_axis_limits(self, new_axis_limits):
         self.axes.set_ylim((new_axis_limits))
-        if self.integ_lines:
+        if self.integ_lines and self.plot_mode != ILLUMINANCE:
             self.axes.vlines(self.integ_lines, new_axis_limits[0],
                              new_axis_limits[1], colors='r')
+            self.axes.vlines(self.fractional_lines, new_axis_limits[0],
+                             new_axis_limits[1], colors='b')
 
     @property
     def x_label(self):
@@ -109,52 +152,7 @@ class GraphPanel(wx.Panel):
 
     @y_label.setter
     def y_label(self, new_label):
-        self.units = new_label
         self.axes.set_ylabel(new_label)
-
-    def on_pixel_picker(self, event):
-        """handles on click event when in calibration mode. selects data points.
-        right click to remove selection"""
-        mouseevent = event.mouseevent
-        line = self.axes.get_lines()[0]
-        try:
-            index = list(line.get_xdata()).index(round(mouseevent.xdata))
-        except ValueError:
-            return
-        if mouseevent.button is not 1:
-            try:
-                self.markers.remove(index)
-            except ValueError:
-                pass
-            line.set_markevery(self.markers)
-            self.figure.canvas.draw()
-            return
-        if index in self.markers:
-            self.figure.canvas.draw()
-            return
-        self.markers.append(index)
-        self.markers.sort()
-        line.set_marker('o')
-        line.set_markevery(self.markers)
-        self.figure.canvas.draw()
-
-    def add_toolbar(self):
-        """adds the pan and zoom tools (and a few others) to a toolbar at the
-        base of the plot panel"""
-        self.toolbar = NavigationToolbar2Wx(self.canvas)
-        self.toolbar.Realize()
-        tw, th = self.toolbar.GetSizeTuple()
-        fw, fh = self.canvas.GetSizeTuple()
-        self.toolbar.SetSize(wx.Size(fw, th))
-        # delete subplots and save image tools
-        if IS_MAC:
-            pass
-        else:
-            self.toolbar.DeleteToolByPos(8)
-            self.toolbar.DeleteToolByPos(7)
-        self.toolbar.SetBackgroundColour("white")
-        self.sizer.Add(self.toolbar, 0, wx.EXPAND | wx.BOTTOM | wx.ALL, 0)
-        self.toolbar.update()
 
     def on_movement(self, event):
         """displays cursor coordinates in the status bar. wx.PostEvent throws an
@@ -166,7 +164,7 @@ class GraphPanel(wx.Panel):
             y = event.ydata
             coords = '(%d, %.2f)' % (x, y)
             evt = custom_event(coords=coords)
-            wx.PostEvent(self.frame, evt)
+            wx.PostEvent(self.Parent.Parent, evt)
         except Exception:
             pass
 
@@ -178,19 +176,21 @@ class GraphPanel(wx.Panel):
         while self.axes.texts:
             for text in self.axes.texts:
                 text.remove()
-        if self.text:
-            if self.integ_lines:
-                self.axes.texts.append(self.text)
-            else:
-                self.text = None
         if event.button is not 1:
-            self.figure.canvas.draw()
+            if self.text:
+                if self.integ_lines:
+                    self.axes.text(0.01, 0.99, self.text.get_text(),
+                                   size='x-large',
+                                   verticalalignment='top',
+                                   horizontalalignment='left',
+                                   transform=self.axes.transAxes)
+            self.canvas.draw()
             return
         x = round(event.xdata)
+        text_lists = []
+        ymin, ymax = self.axes.get_ylim()
+        spacer = (ymax - ymin) * 0.03
         try:
-            text_lists = []
-            ymin, ymax = self.axes.get_ylim()
-            spacer = (ymax - ymin) * 0.03
             for line in self.axes.get_lines():
                 try:
                     index = list(line.get_xdata()).index(x)
@@ -217,9 +217,18 @@ class GraphPanel(wx.Panel):
             for t in text_lists:
                 self.axes.text(t[0], t[1] , t[2],
                                bbox={'facecolor': t[3],
-                                     'alpha': 0.5, 'pad': 10})
+                                     'alpha': 0.25, 'pad': 5})
                 self.axes.text(t[0], 0, unicode(t[0]))
-            self.figure.canvas.draw()
+            if self.text:
+                if self.integ_lines:
+                    self.axes.text(0.01, 0.99, self.text.get_text(),
+                                   size='x-large',
+                                   verticalalignment='top',
+                                   horizontalalignment='left',
+                                   transform=self.axes.transAxes)
+                else:
+                    self.text = None
+            self.canvas.draw()
         except (ValueError, IndexError):
             pass
 
@@ -228,7 +237,10 @@ class GraphPanel(wx.Panel):
         rolled back at a rate of .5% of total panel limits per wheel step"""
         if not event.step:
             return
-        line = self.axes.get_lines()[0]
+        try:
+            line = self.axes.get_lines()[0]
+        except IndexError:
+            return
         xdata = line.get_xdata()
         ydata = line.get_ydata()
         center_x = xdata[len(xdata)/2]
@@ -259,52 +271,39 @@ class GraphPanel(wx.Panel):
             self.x_axis_limits = (minx, maxx)
         if not maxy - miny <=1:
             self.y_axis_limits = (miny, maxy)
-        self.figure.canvas.draw()
+        self.canvas.draw()
 
     def plot_signal(self, y_data, auto_scale, color_map, label):
         """plots a single line with auto_scale and color_map as optional
         settings"""
         try:
-            line = self.axes.get_lines()[0]
+            self.axes.lines = [self.axes.lines[0]]
+            line = self.axes.lines[0]
         except Exception:
-            line, = self.axes.plot(self.x_data, new_y[:len(self.x_data)])
-        #self.axes.clear()
-        while self.axes.texts:
-            for text in self.axes.texts:
-                text.remove()
-        if self.integ_lines:
-            self.show_irradiance_data(auto_scale)
-        if color_map:
-            i = 0
-            for x in self.x_data:
-                if i >= len(self.x_data) - 1:
-                    continue
-                self.axes.fill_between([x, x + 1],
-                                       [y_data[i], y_data[i+1]],
-                                       color=self.color_map[int(x)-340])
-                i += 1
-        try:
+            line, = self.axes.plot(self.x_data, y_data[:len(self.x_data)])
+        else:
             line.set_data(self.x_data, y_data[:len(self.x_data)])
-            line.set_label(label)
-        except ValueError:
-            # plot units were updated before new data could be calculated
-            # dont plot this round
-            pass
-        if self.calibrate_mode:
-            line.set_picker(True)
-            line.set_marker('o')
-            line.set_markevery(self.markers)
+        self.axes.collections = [] # removes any leftover integration lines
+        self.axes.texts = [] # clears out any texts
+        line.set_label(label)
+        self.axes.legend(loc=1)
+        if self.integ_lines:
+            self.show_irradiance_data(y_data, auto_scale)
+        if color_map:
+            self.add_rainbow(y_data)
         if auto_scale:
             self.axes.relim(visible_only=True)
             self.axes.autoscale_view(scalex=False)
-        self.figure.canvas.draw()
+        self.axes.autoscale(enable=auto_scale)
+        self.canvas.draw()
         try:
             wx.YieldIfNeeded()
         except Exception:
             pass
         return self.axes.get_xlim(), self.axes.get_ylim()
 
-    def plot_multiline(self, scan_data, average, auto_scale, active_device=None):
+    def plot_multiline(self, scan_data, average, auto_scale, active_device=None,
+                       paired=[]):
         """plots multiple line data from data capture or from file. auto scale
         is always on but limits can be adjusted from the left panel in the 
         application. Color mapping is disabled for multiline plots. Also
@@ -316,13 +315,46 @@ class GraphPanel(wx.Panel):
         self.axes.autoscale(auto_scale)
         x_data_set = set()
         total_scans = 0
+        if paired: # and self.plot_mode in[ENERGY_FLUX, PHOTON_FLUX]:
+            #combine paired sensors into single line
+            new_scan_data = []
+            for p in paired:
+                new_dict = {}
+                new_dict['labels'] = [p[0] + ' and ' + p[1]]
+                new_dict['x_data'] = range(340, 1101)
+                new_dict['y_data'] = [[0] * 761]
+                scans = scan_data[:]
+                for data in scans:
+                    if data['labels'][0] not in p:
+                        continue
+                    y = data['y_data'][0]
+                    i = data['x_data'][0] - 340
+                    j = 0
+                    while i <= data['x_data'][-1] - 340:
+                        if new_dict['y_data'][0][i] == 0:
+                            new_dict['y_data'][0][i] = y[j]
+                        else:
+                            new_dict['y_data'][0][i] = (y[j] + new_dict['y_data'][0][i])/2
+                        i += 1
+                        j += 1
+                    scan_data.remove(data)
+                if active_device in new_dict['labels'][0]:
+                    if self.plot_mode == PHOTON_FLUX:
+                        new_dict['y_data'][0] = self.calculate_ypf(new_dict['x_data'], new_dict['y_data'][0])
+                    elif self.plot_mode in [ENERGY_FLUX, ILLUMINANCE]:
+                        new_dict['y_data'][0] = self.integrate_range(new_dict['x_data'], new_dict['y_data'][0])
+                        if self.plot_mode == ILLUMINANCE:
+                            del(new_dict['y_data'][0][-2:])
+                new_scan_data.append(new_dict)
+            for data in scan_data:
+                new_scan_data.append(data)
+            scan_data = new_scan_data
         for data in scan_data:
             try:
-                if data['labels'][0] == active_device:
-                    if len(data['y_data']) == 1:
-                        self.y_data = data['y_data'][0]
-                        if self.integ_lines:
-                            self.show_irradiance_data(auto_scale)
+                if self.integ_lines:
+                    if active_device in data['labels'][0]:
+                        self.show_irradiance_data(data['y_data'][0],
+                                                  auto_scale)
             except Exception:
                 pass
             x_data = data['x_data']
@@ -334,9 +366,9 @@ class GraphPanel(wx.Panel):
                     # ranges
                     if x not in x_data_set:
                         x_data_set.add(x)
-                        average_scan[unicode(x)] = [0,0]
-                    average_scan[unicode(x)][0] += scan[i]
-                    average_scan[unicode(x)][1] += 1
+                        average_scan[x] = [0,0]
+                    average_scan[x][0] += scan[i]
+                    average_scan[x][1] += 1
                     i += 1
             i = 0
             for scan in data['y_data']:
@@ -349,36 +381,52 @@ class GraphPanel(wx.Panel):
             avg_x = []
             avg_y = []
             for i in range(len(average_scan)):
-                avg_y.append(average_scan[unicode(avg[i])][0]/ \
-                             average_scan[unicode(avg[i])][1])
+                avg_y.append(average_scan[avg[i]][0]/ \
+                             average_scan[avg[i]][1])
                 avg_x.append(int(avg[i]))
             self.axes.plot(avg_x, avg_y, label='Average', color='black',
-                           linewidth=3)
+                           linewidth=2)
         self.axes.legend(loc=1)
-        self.figure.canvas.draw()
+        self.canvas.draw()
         return self.axes.get_xlim(), self.axes.get_ylim()
 
-    def show_irradiance_data(self, auto_scale):
+    def show_irradiance_data(self, y_data, auto_scale):
         if self.plot_mode == PHOTON_FLUX:
-            total, ppf, ypf, ppe = self.y_data[-4:]
+            total, ppf, ypf, ppe, fract, r_rf = y_data[-6:]
             self.apply_text(
-                "Integrated Total: %0.4f\nPPF: %.4f\nYPF: %.4f\nPPE: %.4f"
-                % (total, ppf, ypf, ppe))
+                "Integrated Total: %0.4f\nFraction of Total: %0.4f" \
+                "\nPPF: %.4f\nYPF: %.4f\nPPE: %.4f\nR/FR: %.4f"
+                % (total, fract, ppf, ypf, ppe, r_rf))
         elif self.plot_mode == ENERGY_FLUX:
-            total = self.y_data[-1]
-            self.apply_text("Integrated Total: %0.4f" % total)
+            total, fract, r_rf = y_data[-3:]
+            self.apply_text("Integrated Total: %0.4f\nFraction of Total: %0.4f" \
+                            "\nR/FR: %.4f" % (total, fract, r_rf))
         elif self.plot_mode == ILLUMINANCE:
-            total = self.y_data[-1]
+            total = y_data[-1]
             if self.plot_unit == LUX:
                 self.apply_text("LUX: %.4f" % total)
             elif self.plot_unit == FOOTCANDLE:
                 self.apply_text("Footcandle: %.4f" % total)
         if auto_scale:
-            ma = max(self.y_data[:-20])
-            mi = min(self.y_data[:-20])
+            ma = max(y_data[:-20])
+            mi = min(y_data[:-20])
+            if ma == mi:
+                mi -= 0.001
+                ma += 0.001
             self.y_axis_limits = (mi * 1.05, ma * 1.05)
-        y_lim = self.axes.get_ylim()
-        self.axes.vlines(self.integ_lines, y_lim[0], y_lim[1], colors='r')
+        if self.plot_mode != ILLUMINANCE:
+            self.axes.vlines(self.integ_lines, 1, 1, colors='r')
+            self.axes.vlines(self.fractional_lines, 1, 1, colors='b')
+
+    def add_rainbow(self, y_data):
+        i = 0
+        for x in self.x_data:
+            if i >= len(self.x_data) - 1:
+                continue
+            self.axes.fill_between([x, x + 1],
+                                   [y_data[i], y_data[i+1]],
+                                   color=COLOR_MAP[x-340])
+            i += 1
 
     def apply_text(self, text):
         self.text = self.axes.text(0.01, 0.99, text, size='x-large',
@@ -396,94 +444,76 @@ class GraphPanel(wx.Panel):
             elif line.get_label() == '_Average':
                 line.set_visible(True)
                 line.set_label('Average')
-        while self.axes.texts:
-            for text in self.axes.texts:
-                text.remove()
+        self.axes.texts = []
         self.axes.legend(loc=1)
-        self.figure.canvas.draw()
+        self.canvas.draw()
 
     def save_graph(self, file_path):
         """saves the current plot as a user specified image type"""
-        self.figure.savefig(file_path)
+        self.canvas.figure.savefig(file_path)
 
-    def wavelength_to_rgb(self, gamma=1.0):
-        """computes the color mapping rgb values where 0 <= r, g, b <= 1."""
-        color_map = []
-        for wavelength in range(340, 1101):
-            wavelength = float(wavelength)
-            if wavelength >= 340 and wavelength <=370:
-                R = 0.0
-                G = 0.0
-                B = 0.0
-            elif wavelength >= 370 and wavelength <= 460:
-                attenuation = (wavelength - 340) / (460 - 340)
-                R = ((-(wavelength - 460) / (460 - 340)) * attenuation) ** gamma
-                G = 0.0
-                B = (1.0 * attenuation) ** gamma
-            elif wavelength >= 460 and wavelength <= 500:
-                R = 0.0
-                G = (0.9 * (wavelength - 460) / (500 - 460)) ** gamma
-                B = 1.0 ** gamma
-            elif wavelength >= 500 and wavelength <= 530:
-                R = 0.0
-                G = 0.9 ** gamma
-                B = (-(wavelength - 530) / (530 - 500)) ** gamma
-            elif wavelength >= 530 and wavelength <= 580:
-                R = ((wavelength - 530) / (580 - 530)) ** gamma
-                G = 0.9 + (0.1 * (wavelength - 530) / (580 - 530)) ** gamma
-                B = 0.0
-            elif wavelength >= 580 and wavelength <= 640:
-                R = 1.0 ** gamma
-                G = (-(wavelength - 640) / (640 - 580)) ** gamma
-                B = 0.0
-            elif wavelength >=640 and wavelength <=680:
-                R = 1.0 ** gamma
-                G = 0.0
-                B = 0.0
-            elif wavelength >= 680 and wavelength <= 740:
-                attenuation = (740 - wavelength) / (740 - 680)
-                R = (attenuation) ** gamma
-                G = 0.0
-                B = 0.0
-            elif wavelength >= 740 and wavelength <=800:
-                attenuation = (-(wavelength - 800 )) / (800 - 740)
-                R = 0.8 - (0.8 * attenuation) ** gamma
-                G = 0.8 - (0.8 * attenuation) ** gamma
-                B = 0.8 - (0.8 * attenuation) ** gamma
-            else:
-                attenuation = (-(wavelength - 1100 )) / (1100 - 800)
-                R = (0.8 * attenuation) ** gamma
-                G = (0.8 * attenuation) ** gamma
-                B = (0.8 * attenuation) ** gamma
-            color_map.append((R, G, B))
-        return color_map
-
-    def set_calibration_mode(self):
-        """enables pixel picking for calibration mode. this method works as a
-        toggle. a second call of this method will turn off pixel picking and
-        reenable orignal on-click settings"""
-        if not self.calibrate_mode:
-            self.figure.canvas.mpl_disconnect(self.cid2)
-            for line in self.axes.get_lines():
-                line.set_picker(True)
-            self.cid2 = self.figure.canvas.mpl_connect(
-                'pick_event', self.on_pixel_picker)
-            self.markers = []
-            self.calibrate_mode = True
-            return
-        self.figure.canvas.mpl_disconnect(self.cid2)
-        self.cid2 = self.figure.canvas.mpl_connect('button_press_event',
-                                                   self.on_press)
-        self.markers = []
-        self.calibrate_mode = False
-
-    def vlines(self, enable, integ_range):
+    def vlines(self, enable, integ_range, fractional_range):
         """displays, updates, and removes integration range lines for Irradiance
         mode"""
         if enable:
             self.integ_lines = integ_range
+            self.fractional_lines = fractional_range
         else:
             self.integ_lines = []
+            self.fractional_lines = []
 
     def draw(self):
-        self.figure.canvas.draw()
+        self.canvas.draw()
+
+    def integrate_range(self, x_range, y):
+        """calculates an integrated total"""
+        total = fraction = i = r = fr = 0
+        integ_range = self.integ_lines
+        fractional_range = self.fractional_lines
+        red, far_red = RED_FARRED
+        for x in x_range:
+            if integ_range[0] <= x <= integ_range[1]:
+                total += y[i]
+            if fractional_range[0] <= x <= fractional_range[1]:
+                fraction += y[i]
+            if red[0] <= x <= red[1]:
+                r += y[i]
+            if far_red[0] <= x <= far_red[1]:
+                fr += y[i]
+            i += 1
+        return y + [total, fraction/total, r/fr]
+
+    def calculate_ypf(self, x_range, y):
+        """calculates an integrated total, ypf, ppf, and ppe, fraction/total"""
+        if not y:
+            return
+        total = fraction = ypf = ppf = ppe_r = ppe_fr = i = r = fr = 0
+        integ_range = self.integ_lines
+        fractional_range = self.fractional_lines
+        red, far_red = RED_FARRED
+        for x in x_range:
+            x = int(x)
+            yp = 0
+            if 300 <= x <= 800:
+                yp = y[i] * RQE[x - 300]
+                ypf += yp
+                ppe_r += y[i] * SIGMA_R[x - 300]
+                ppe_fr += y[i] * SIGMA_FR[x - 300]
+            if 400 <= x <= 700:
+                ppf += y[i]
+            if integ_range[0] <= x <= integ_range[1]:
+                total += y[i]
+            if fractional_range[0] <= x <= fractional_range[1]:
+                fraction += y[i]
+            if red[0] <= x <= red[1]:
+                r += y[i]
+            if far_red[0] <= x <= far_red[1]:
+                fr += y[i]
+            i += 1
+        if ppe_r:
+            ppe = ppe_r/(ppe_r + ppe_fr)
+        else:
+            ppe = 0.0
+        if total == 0:
+            total = 1 # avoid division by zero
+        return y + [total, ppf, ypf, ppe, fraction/total, r/fr]

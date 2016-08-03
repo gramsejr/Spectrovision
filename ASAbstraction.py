@@ -6,7 +6,7 @@ from INI_Configuration import INIMixin
 
 class ASAbstraction(INIMixin):
     def __init__(self):
-        ini_defaults = {'device_serial': '',
+        ini_defaults = {'device_alias': '',
                         'current_directory': '',
                         'current_file': ''}
         super(ASAbstraction, self).__init__(ini_defaults=ini_defaults)
@@ -15,7 +15,7 @@ class ASAbstraction(INIMixin):
         self.last_file_type = ""
         self.current_file_type = ""
         self.connected = False
-        self.connected_serials = []
+        self.connected_devices = []
         self.multi_plot_data = []
         self.dark_pixels = []
         self.auto_integrate = True
@@ -24,12 +24,12 @@ class ASAbstraction(INIMixin):
         self.integ_time = 2000
 
     @property
-    def device_serial(self):
-        return self.ini.device_serial
+    def device_alias(self):
+        return self.ini.device_alias
 
-    @device_serial.setter
-    def device_serial(self, new_name):
-        self.ini.device_serial = new_name
+    @device_alias.setter
+    def device_alias(self, new_name):
+        self.ini.device_alias = new_name
 
     @property
     def current_directory(self):

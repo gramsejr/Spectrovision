@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 
 import wx
 
-VERSION = '1.0'
+VERSION = '1.01.002'
 
 IS_GTK = 'wxGTK' in wx.PlatformInfo
 IS_WIN = 'wxMSW' in wx.PlatformInfo
@@ -16,23 +16,25 @@ ENERGY_FLUX = 2
 PHOTON_FLUX = 3
 ILLUMINANCE = 4
 
+RED_FARRED = ([635, 685], [710,760])
+
 MODE_TO_UNITS = ['Relative', 'Relative', 'Watts', 'umols', '%s']
 UNITS_TO_STR = ['Lux', 'Footcandle']
 
 # units. labels are written in latex math mode format for matplotlib. WX labels
 # are written using unicode characters
-WM2_LABEL = r'$W\cdot m^{-2}\cdot nm^{-1}$'
+WM2_LABEL = r'$Energy\ Flux\ Density\ [W\cdot m^{-2}\cdot nm^{-1}]$'
 WX_WM2_LABEL = "[W\u2022m\u207B\u00b2\u2022nm\u207B\u00b9]"
-MICROMOL_LABEL = r'$\mu mol\cdot m^{-2}\cdot s^{-1}\cdot nm^{-1}$'
+MICROMOL_LABEL = r'$Photon\ Flux\ Density\ [\mu mol\cdot m^{-2}\cdot s^{-1}\cdot nm^{-1}]$'
 WX_MICROMOL_LABEL = "[\u03BCmol\u2022m\u207B\u00b2\u2022s\u207B\u00b9\u2022nm" \
     "\u207B\u00b9]"
 LUX = 0
-LUX_LABEL = r'$Lux: lm\cdot m^{-2}\cdot nm^{-1}$'
+LUX_LABEL = r'$Illuminance\ [lm\cdot m^{-2}\cdot nm^{-1}]$'
 WX_LUX_LABEL = "[lm\u2022m\u207B\u00b2\u2022nm\u207B\u00b9]"
 FOOTCANDLE = 1
-FC_LABEL = r'$Footcandle: lm\cdot ft^{-2}\cdot nm^{-1}$'
+FC_LABEL = r'$Illuminance\ [lm\cdot ft^{-2}\cdot nm^{-1}]$'
 WX_FC_LABEL = "[lm\u2022ft\u207B\u00b2\u2022nm\u207B\u00b9]"
-X_LABEL = r'$Wavelength: \lambda\ (nm)$'
+X_LABEL = r'$Wavelength\ [\lambda\ (nm)]$'
 
 # used for ypf calculations. YPF = RF*PF
 RQE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.005, 0.01,
@@ -325,6 +327,9 @@ The current plot will be saved to an image file with the extension of your choic
 Save graph data:
 The data of the current plot will be saved to a file of type *.csv or *.dat. This function supports multi sensor plots as well.
 
+Save graph data and image:
+Combines the previous two buttons in one for ease of use.
+
 Copy graph to clipboard:
 Copies the current plot to the system clipboard for pasting into other applications. The clipboard object is of type *.png.
 
@@ -347,7 +352,7 @@ Stop continuous measurements:
 This completely stops continuous measurements without regard to data being left in the device's buffer.
 
 Sensor toggles:
-When a device is connected, a new toggle button will be displayed on the toolbar representing the sensor. If the sensor is toggled, it is considered 'active' and all 'Set dark reference', 'Set light reference', and 'Clear dark reference' button clicks will apply only to the 'active' device. Right clicking on the device toggle button will display a pop up menu with options to rename the device or disconnect the device.
+When a device is connected, a new toggle button will be displayed on the toolbar representing the sensor. If the sensor is toggled, it is considered 'active' and all 'Set dark reference', 'Set light reference', and 'Clear dark reference' button clicks will apply only to the 'active' device. Right clicking on the device toggle button will display a pop up menu with options to rename the device, reset the device, or disconnect the device. If there is both a Visible and Near Infrared model connected, an additional option to pair the two together will be added to this menu. This will combine the two sensors to make a single plot from 340 nanometers to 1100 nanometers.
 """
 
 LEFTPANEL_HELP = """
@@ -355,10 +360,10 @@ Left Panel Controls
 --------------------------------------------------------------------------------
 
 Integration Time:
-This specifies the time frame the sensor is to use for integrating the recieved radiation. A longer integration time will give a greater signal. If the auto-integration toggle button is pressed, the device will specify its own integration time based on the recieved light intensity. Auto-integration will max out at 2 sec. For integration times greater than 2 sec, toggle Auto-Integration off and enter the desired time in the spin ctrl box. The Apogee Visable and NIR sensors support 0.001 - 10 second integration times. The last scans integration time will be displayed in the status bar at the bottom of the screen.
+This specifies the time frame the sensor is to use for integrating the received radiation. A longer integration time will give a greater signal. If the auto-integration toggle button is pressed, the device will specify its own integration time based on the received light intensity. Auto-integration will max out at 2 sec. For integration times greater than 2 sec, toggle Auto-Integration off and enter the desired time in the spin ctrl box. The Apogee Visible and NIR sensors support 0.005 - 10 second integration times. The last scans integration time will be displayed in the status bar at the bottom of the screen.
 
 Number of Scans to Average
-This tells the device how many measurements to average together before outputing data.
+This tells the device how many measurements to average together before outputting data.
 
 Relative:
 Plots wavelength intensity as raw digital counts.
@@ -370,13 +375,16 @@ Energy Flux Density:
 Plots in units of Watts/m^2*nm. This mode will also display an integrated total over the given Integration Range from the left panel.
 
 Photon Flux Density:
-Plots in units of micromol/m^2*s*nm. This mode will also dislay an integrated total over the given Integration Range from the left panel, as well as YPF, PPF,  and PPE values.
+Plots in units of micromole/m^2*s*nm. This mode will also display an integrated total over the given Integration Range from the left panel, as well as YPF, PPF, and PPE values.
 
 Illuminance:
 Plots a weighted data range in Lux or Footcandle according to user preference.
 
 Integration Range:
 These spin controls become active during Energy Flux Density and Photon Flux Density plot modes and are used to specify a customized wavelength integration range for the Integrated Total displayed on the plot. The YPF, PPF, and PPE values remain unchanged regardless of the Integration Range values. These controls are inactive for the other plot modes.
+
+Fractional Range:
+These spin controls become active during Energy Flux Density and Photon Flux Density modes. A 'Fractional' ratio is displayed on the graph. This ratio is the sum of the wavelengths specified in the Fractional Range spin controls divided by the sum of the wavelengths specified in the Integration Range spin controls.
 
 Axes Limits:
 These controls are inactive if the Auto Scale toggle button is active. The y axis has limits of (-16383, 16383) and the x axis has limits of (300, 1120). Any value in between may be specified with an accuracy of two decimal places.
@@ -410,10 +418,13 @@ Data Capture:
 The data capture feature allows for a functional data logging environment. The user may choose a specific number of measurements to record or leave it open ended by leaving the default value of 0 in the spin control. The user may specify a waiting period between measurements or if left at zero, the device will take measurements as soon as data has been pulled from memory. If 'Save data to file' is checked, the user will be prompted to enter a file name. If a previously created file is chosen, the data capture function will append new data to the end of the file. A different file must be chosen for each sensor currently connected to Apogee Spectrovision. If 'Plot data to screen' is checked, the data capture function will plot the first ten measurements of the file specified during data capture setup. If multiple sensors are connected and there are less than ten measurements in the first file, the next file will be read from until a max of 10 measurements have been accumulated for plotting. The data capture mode may be canceled at any time by hitting the 'Cancel' button. Any measurements made before hitting the 'Cancel' button will still be saved in the files specified during setup.
 
 Connect:
-This option will prompt the user for a Com port and slave id for the device they wish to connect. The previously used settings will populate automatically for convenience.
+This features connects to a sensor plugged in to the computers USB port. If more than one sensor is connected, the user will select which sensor to connect to from a dropdown menu.
 
 Disconnect:
-Disconnect from the specified device.
+Disconnect from the device chosen from the dropdown menu.
+
+Red/Far Red Setup:
+Displays a window in which the user can specify the wavelength ranges of the Red and Far Red spectrums. The ratio R/RF (Red/Far Red) is displayed during Energy Flux Density and Photon Flux Density plot modes.
 
 Exit:
 Close the application.
@@ -424,7 +435,7 @@ Each option in this menu will switch the current plot mode to the one specified 
 
 Help
 
-Jump to the help tab with of the chosen subject.
+Jump to the help tab of the chosen subject.
 
 Pressing the alt key while the application is open will display hot key values for menu bar options. For example, alt --> f --> c will select the Connect function in the File menu.
 """
@@ -457,5 +468,9 @@ A left click in the plot area will display the y-value of the plot near the data
 """
 
 ABOUT_TEXT = """
-Apogee Spectrovision is a software package used to plot output from Apogee Spectrometers. This software provides users with an instant visual representation of data and has many useful features including saving data output, saving plot image, examining first and second derivatives, and short to long term data capture. Apogee Spectrovision provides multiple plot modes in a user friendly environment and supports multiple sensors connected in concert. This project was designed for cross platform use using Python, wxPython, Matplotlib, minimalmodbus, and pySerial libraries and has been tested on Windows XP, Windows 7, Windows 8, and OS X Yosemite.
-"""
+Apogee Spectrovision - Version %s
+Copyright \u00a9 2016 Apogee Instruments, Inc.
+
+
+Apogee Spectrovision is a software package used to plot output from Apogee Spectrometers. This software provides users with an instant visual representation of data and has many useful features including saving data output, saving plot image, examining first and second derivatives, and short to long term data capture. Apogee Spectrovision provides multiple plot modes in a user friendly environment and supports multiple sensors connected in concert. This project was designed for cross platform use using Python, wxPython, Matplotlib, minimalmodbus, and pySerial libraries and has been tested on Windows 7, Windows 10, and OS X Yosemite.
+""" % VERSION

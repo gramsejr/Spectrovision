@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+import datetime
+import time
 import os
 import sys
 
@@ -24,15 +26,25 @@ def resource_path(relative):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative)
 
+def dead_object_catcher(func):
+    def func_wrapper(*args, **kwargs):
+        try:
+            ret = func(*args, **kwargs)
+        except wx.PyDeadObjectError:
+            pass
+        return ret
+    return func_wrapper
+
 class ASPresentation(object):
     def __init__(self):
         """the ASPresentation class contains all the display components of the 
         application and handles all the calls to the gui, some of which
         are rerouted to the GraphPanel class in GraphPanel.py"""
         title = 'Apogee SpectroVision - Version %s' % VERSION
-        self.frame = wx.Frame(None, -1, title=title)
+        self.frame = wx.Frame(None, -1, title=title, size=(1280, 800))
         self.frame.SetBackgroundColour("white")
         self.sensors = []
+        self.calibrate_mode = False
         # set the application icon
         if IS_MAC:
             img_src = resource_path('image_source/%s')
@@ -57,20 +69,23 @@ class ASPresentation(object):
         self.bottom_left_panel = wx.Panel(self.horizontal_splitter, -1)
         self.bottom_left_panel.SetBackgroundColour("white")
         self.bottom_left_panel.SetWindowStyle(wx.RAISED_BORDER)
+        self.bottom_left_panel.SetMaxSize((250, 75))
         self.left_panel = ScrolledPanel(self.horizontal_splitter, -1)
         self.left_panel.SetBackgroundColour((218,238,255))
         self.left_panel.SetWindowStyle(wx.RAISED_BORDER)
-        self.graph_panel = GraphPanel(self.vertical_splitter, self.frame)
-        self.horizontal_splitter.SetMinimumPaneSize(75)
-        self.horizontal_splitter.SetSashInvisible()
-        self.horizontal_splitter.SplitHorizontally(self.left_panel, self.bottom_left_panel, -70)
+        self.graph_panel = GraphPanel(self.vertical_splitter)
+        self.horizontal_splitter.SetMinimumPaneSize(60)
+        self.horizontal_splitter.SplitHorizontally(self.left_panel, self.bottom_left_panel, -60)
         self.vertical_splitter.SetMinimumPaneSize(25)
         self.vertical_splitter.SplitVertically(self.horizontal_splitter,
-                                               self.graph_panel, 200)
+                                               self.graph_panel, 150)
 
         apogee_logo = wx.StaticBitmap(
             self.bottom_left_panel, -1, wx.Bitmap(img_src % "ApogeeLogo.png"),
-            pos=(5,-1))
+            size=(150, -1))
+        sizer = wx.BoxSizer()
+        sizer.Add(apogee_logo, 0, wx.ALIGN_CENTER | wx.ALL, 0)
+        self.bottom_left_panel.SetSizer(sizer)
 
         # set up menu bar
         menu_bar = wx.MenuBar()
@@ -78,6 +93,7 @@ class ASPresentation(object):
         self.file_menu.Append(100, "&Data Capture", "Setup a data capture scheme")
         self.file_menu.Append(101, "&Connect", "Connect to a device")
         self.file_menu.Append(102, "D&isconnect", "Disconnect a device")
+        self.file_menu.Append(103, "&Red/Far Red Setup")
         self.file_menu.Enable(102, False)
         self.file_menu.AppendSeparator()
         self.file_menu.Append(wx.ID_EXIT, "&Exit")
@@ -235,83 +251,86 @@ class ASPresentation(object):
         integration_time_label = wx.StaticText(self.left_panel, -1,
                                                "Integration Time (ms)")
         self.integration_time = wx.SpinCtrl(
-            self.left_panel, value='2000', min=5, max=10000,
+            self.left_panel, value='2000', min=5, max=10000, size=(120, -1),
             style=wx.TE_PROCESS_ENTER | wx.ALIGN_RIGHT)
         self.integration_time.Disable()
         self.auto_integration = wx.ToggleButton(
-            self.left_panel, -1, "Auto-Integration",  size=(150, -1))
+            self.left_panel, -1, "Auto-Integration", size=(120, 30))
         self.auto_integration.SetValue(True)
         number_of_scans_label = wx.StaticText(self.left_panel, -1,
-                                              "Number of Scans to Average")
+                                              "Scans to Average")
 
         # average number of scans controls
         self.number_of_scans_to_avg = wx.SpinCtrl(
-            self.left_panel, value='1', min=1, max=100)
+            self.left_panel, value='1', min=1, max=100, size=(120, -1))
 
         # graph mode and unit controls
         self.relative = wx.RadioButton(
             self.left_panel, label="Relative", style=wx.RB_GROUP)
         self.relative.SetValue(True)
         self.r_t = wx.RadioButton(
-            self.left_panel, label="Reflectance/Transmittance")
+            self.left_panel, label="Refl./Trans.")
 
         self.energy_flux = wx.RadioButton(
             self.left_panel, label="Energy Flux Density")
-        wm2 = wx.StaticText(self.left_panel, -1, WX_WM2_LABEL)
 
         self.photon_flux = wx.RadioButton(
             self.left_panel, label="Photon Flux Density")
-        micromol = wx.StaticText(self.left_panel, -1, WX_MICROMOL_LABEL)
 
         self.illuminance = wx.RadioButton(self.left_panel, label="Illuminance")
         self.lux = wx.RadioButton(
-            self.left_panel, label="Lux: %s" % WX_LUX_LABEL, style=wx.RB_GROUP)
+            self.left_panel, label="Lux", style=wx.RB_GROUP)
         self.footcandle = wx.RadioButton(
-            self.left_panel, label="Footcandle: %s" % WX_FC_LABEL)
+            self.left_panel, label="Footcandle")
 
         # integration range spin controls
         integ_range = wx.StaticText(self.left_panel, -1, "Integration Range")
-        integ_max_text = wx.StaticText(self.left_panel, -1, "Max    ")
-        integ_min_text = wx.StaticText(self.left_panel, -1, "Min    ")
-        self.integ_max = wx.SpinCtrl(self.left_panel, value="820", min=341,
-                                     max=820, size=(70, -1),
-                                     style=wx.TE_PROCESS_ENTER)
-        self.integ_max.Disable()
         self.integ_min = wx.SpinCtrl(self.left_panel, value="340", min=340,
-                                     max=819, size=(70, -1),
+                                     max=819, size=(60, -1),
                                      style=wx.TE_PROCESS_ENTER)
         self.integ_min.Disable()
+        self.integ_max = wx.SpinCtrl(self.left_panel, value="820", min=341,
+                                     max=820, size=(60, -1),
+                                     style=wx.TE_PROCESS_ENTER)
+        self.integ_max.Disable()
+
+        fraction_range = wx.StaticText(self.left_panel, -1, "Fractional Range")
+        self.fraction_min = wx.SpinCtrl(self.left_panel, value="340", min=340,
+                                        max=819, size=(60, -1),
+                                        style=wx.TE_PROCESS_ENTER)
+        self.fraction_min.Disable()
+        self.fraction_max = wx.SpinCtrl(self.left_panel, value="820", min=341,
+                                        max=820, size=(60, -1),
+                                        style=wx.TE_PROCESS_ENTER)
+        self.fraction_max.Disable()
 
         # axes limits controls
-        axes_limits_label = wx.StaticText(self.left_panel, -1, "Axes Limits")
-        y_max_text = wx.StaticText(self.left_panel, -1, "Y Max")
-        y_min_text = wx.StaticText(self.left_panel, -1, "Y Min")
+        y_axes = wx.StaticText(self.left_panel, -1, "Y Axes Limits")
         self.y_axis_min = wx.SpinCtrlDouble(self.left_panel,  min=-16383,
-                                            max=16382, size=(70, -1), inc=0.01,
+                                            max=16382, size=(60, -1), inc=0.01,
                                             style=wx.TE_PROCESS_ENTER)
         self.y_axis_max = wx.SpinCtrlDouble(self.left_panel, min=-16382,
-                                            max=16383, size=(70, -1), inc=0.01,
+                                            max=16383, size=(60, -1), inc=0.01,
                                             style=wx.TE_PROCESS_ENTER)
-        x_max_text = wx.StaticText(self.left_panel, -1, "X Max")
-        x_min_text = wx.StaticText(self.left_panel, -1, "X Min")
+        x_axes = wx.StaticText(self.left_panel, -1, "X Axes Limits")
         self.x_axis_min = wx.SpinCtrlDouble(self.left_panel, min=300, inc=0.01,
-                                            max=1139, size=(70, -1),
+                                            max=1139, size=(60, -1),
                                             style=wx.TE_PROCESS_ENTER)
         self.x_axis_max = wx.SpinCtrlDouble(self.left_panel, min=301, inc=0.01,
-                                            max=1140, size=(70, -1),
+                                            max=1140, size=(60, -1),
                                             style=wx.TE_PROCESS_ENTER)
 
         # toggle button plot options
         self.set_auto_scale(en=False)
         self.auto_scale_toggle = wx.ToggleButton(self.left_panel, -1,
-                                                 "Auto Scale", size=(150, -1))
+                                                 "Auto Scale", size=(120, -1))
         self.auto_scale_toggle.SetValue(True)
         self.color_map_toggle = wx.ToggleButton(
-            self.left_panel, -1, "Map Color Range", size=(150, -1))
+            self.left_panel, -1, "Map Color Range", size=(120, -1))
         self.reset_button = wx.Button(self.left_panel, -1, label="Reset Plot",
-                                      size=(150, -1))
+                                      size=(120, -1))
         self.show_average_button = wx.ToggleButton(
-            self.left_panel, -1, "Show Average", size=(150, -1))
+            self.left_panel, -1, "Show Average", size=(120, -1))
         self.show_average_button.Disable()
 
 
@@ -323,7 +342,7 @@ class ASPresentation(object):
         self.vertical_sizer.Add(self.integration_time, 0,
                                 wx.ALIGN_CENTER | wx.ALL)
         self.vertical_sizer.Add(self.auto_integration, 0,
-                                wx.ALIGN_CENTER | wx.ALL, 5)
+                                wx.ALIGN_CENTER | wx.ALL, 1)
         divider = wx.StaticLine(self.left_panel, -1)
         self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
 
@@ -335,19 +354,11 @@ class ASPresentation(object):
         divider = wx.StaticLine(self.left_panel, -1)
         self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
 
-        self.vertical_sizer.Add(self.relative, 0, wx.ALIGN_LEFT | wx.ALL, 3)
-        self.vertical_sizer.Add(self.r_t, 0, wx.ALIGN_LEFT | wx.ALL, 3)
-        self.vertical_sizer.Add(self.energy_flux, 0, wx.ALIGN_LEFT | wx.ALL, 3)
-        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        h_sizer.AddSpacer(20)
-        h_sizer.Add(wm2, 0, wx.ALIGN_LEFT | wx.ALL)
-        self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
-        self.vertical_sizer.Add(self.photon_flux, 0, wx.ALIGN_LEFT | wx.ALL, 3)
-        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        h_sizer.AddSpacer(20)
-        h_sizer.Add(micromol, 0, wx.ALIGN_LEFT | wx.ALL)
-        self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
-        self.vertical_sizer.Add(self.illuminance, 0, wx.ALIGN_LEFT | wx.ALL, 3)
+        self.vertical_sizer.Add(self.relative, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        self.vertical_sizer.Add(self.r_t, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        self.vertical_sizer.Add(self.energy_flux, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        self.vertical_sizer.Add(self.photon_flux, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        self.vertical_sizer.Add(self.illuminance, 0, wx.ALIGN_LEFT | wx.ALL, 2)
         h_sizer = wx.BoxSizer(wx.HORIZONTAL)
         h_sizer.AddSpacer(20)
         h_sizer.Add(self.lux, 0, wx.ALIGN_LEFT | wx.ALL)
@@ -357,70 +368,55 @@ class ASPresentation(object):
         h_sizer.Add(self.footcandle, 0, wx.ALIGN_LEFT | wx.ALL)
         self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
 
-        self.vertical_sizer.Add(integ_range, 0, wx.ALIGN_CENTER | wx.ALL, 5)
-
+        self.vertical_sizer.Add(integ_range, 0, wx.ALIGN_CENTER | wx.ALL, 1)
         horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        v_sizer = wx.BoxSizer(wx.VERTICAL)
-        v_sizer.Add(integ_min_text, 1, wx.ALIGN_CENTER | wx.ALL)
-        v_sizer.Add(self.integ_min, 1, wx.ALIGN_CENTER | wx.ALL)
-
         horizontal_sizer.Add(
-            v_sizer, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-
-        v_sizer = wx.BoxSizer(wx.VERTICAL)
-        v_sizer.Add(integ_max_text, 1, wx.ALIGN_CENTER | wx.ALL)
-        v_sizer.Add(self.integ_max, 1, wx.ALIGN_CENTER | wx.ALL)
-
+            self.integ_min, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
         horizontal_sizer.Add(
-            v_sizer, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+            self.integ_max, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        self.vertical_sizer.Add(
+            horizontal_sizer, 0,  wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+
+        self.vertical_sizer.Add(fraction_range, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        horizontal_sizer.Add(
+            self.fraction_min, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        horizontal_sizer.Add(
+            self.fraction_max, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
         self.vertical_sizer.Add(
             horizontal_sizer, 0,  wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
 
         divider = wx.StaticLine(self.left_panel, -1)
         self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
 
-        self.vertical_sizer.Add(axes_limits_label, 0,
+        self.vertical_sizer.Add(y_axes, 0,
                                 wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        v_sizer = wx.BoxSizer(wx.VERTICAL)
-        v_sizer.Add(y_min_text, 1, wx.ALIGN_CENTER | wx.ALL)
-        v_sizer.Add(self.y_axis_min, 1, wx.ALIGN_CENTER | wx.ALL)
         horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
-
-        v_sizer = wx.BoxSizer(wx.VERTICAL)
-        v_sizer.Add(y_max_text, 1, wx.ALIGN_CENTER | wx.ALL)
-        v_sizer.Add(self.y_axis_max, 1, wx.ALIGN_CENTER | wx.ALL)
-        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
-
+        horizontal_sizer.Add(self.y_axis_min, 0, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer.Add(self.y_axis_max, 0, wx.ALIGN_CENTER | wx.ALL)
         self.vertical_sizer.Add(horizontal_sizer, 0,
                                 wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        self.vertical_sizer.AddSpacer(10)
+        self.vertical_sizer.AddSpacer(5)
 
-        v_sizer = wx.BoxSizer(wx.VERTICAL)
-        v_sizer.Add(x_min_text, 1, wx.ALIGN_CENTER | wx.ALL)
-        v_sizer.Add(self.x_axis_min, 1, wx.ALIGN_CENTER | wx.ALL)
+        self.vertical_sizer.Add(x_axes, 0,
+                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
         horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
-
-        v_sizer = wx.BoxSizer(wx.VERTICAL)
-        v_sizer.Add(x_max_text, 1, wx.ALIGN_CENTER | wx.ALL)
-        v_sizer.Add(self.x_axis_max, 1, wx.ALIGN_CENTER | wx.ALL)
-        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
-
+        horizontal_sizer.Add(self.x_axis_min, 0, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer.Add(self.x_axis_max, 0, wx.ALIGN_CENTER | wx.ALL)
         self.vertical_sizer.Add(horizontal_sizer, 0,
-                                wx.ALIGN_CENTER | wx.ALL)
+                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
 
         divider = wx.StaticLine(self.left_panel, -1)
         self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
 
         self.vertical_sizer.Add(
-            self.auto_scale_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+            self.auto_scale_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 1)
         self.vertical_sizer.Add(
-            self.color_map_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+            self.color_map_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 1)
         self.vertical_sizer.Add(self.reset_button, 0,
-                                wx.ALIGN_CENTER | wx.ALL, 5)
+                                wx.ALIGN_CENTER | wx.ALL, 1)
         self.vertical_sizer.Add(
-            self.show_average_button, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+            self.show_average_button, 0, wx.ALIGN_CENTER | wx.ALL, 1)
 
         # set the sizer of the left panel
         self.left_panel.SetSizer(self.vertical_sizer)
@@ -441,11 +437,12 @@ class ASPresentation(object):
         # show and maximize frame
         self.left_panel.SetupScrolling()
         self.frame.Show()
-        self.frame.Maximize()
+        #self.frame.Maximize()
 
         self.enable_units()
 
     @property
+    @dead_object_catcher
     def active_mode(self):
         """This property returns whichever plot mode is currently selected with
         the radio dials along the left panel."""
@@ -461,6 +458,7 @@ class ASPresentation(object):
             return ILLUMINANCE
 
     @active_mode.setter
+    @dead_object_catcher
     def active_mode(self, mode):
         """Sets the active mode to the given value"""
         if mode == RELATIVE:
@@ -475,6 +473,7 @@ class ASPresentation(object):
             self.illuminance.SetValue(True)
 
     @property
+    @dead_object_catcher
     def active_unit(self):
         """returns either lux or footcandle and is only available in illuminance
         mode"""
@@ -485,6 +484,7 @@ class ASPresentation(object):
         return -1
 
     @active_unit.setter
+    @dead_object_catcher
     def active_unit(self, new_unit):
         """sets the active unit to either lux or footcandle"""
         if new_unit == LUX:
@@ -493,6 +493,7 @@ class ASPresentation(object):
             self.footcandle.SetValue(True)
 
     @property
+    @dead_object_catcher
     def active_device(self):
         """returns which device is toggled in the toolbar"""
         for sensor in self.sensors:
@@ -536,12 +537,14 @@ class ASPresentation(object):
         self.graph_panel.x_data = new_data
 
     @property
+    @dead_object_catcher
     def integ_time(self):
         """returns the integration displayed in the status bar. Only used when
         switching out of 'Auto-Integration' mode."""
         return self.integration_time.GetValue() * 1000.0
 
     @integ_time.setter
+    @dead_object_catcher
     def integ_time(self, new_integ_time):
         """converts from integer in microseconds to float with 3 decimal places
         and displays new value in the status bar"""
@@ -550,62 +553,72 @@ class ASPresentation(object):
             "Integration Time: %.3f s" % new_integ_time, 2)
 
     @property
+    @dead_object_catcher
     def average_scans(self):
         """returns the number displayed in the 'Number of Scans to Average'
         spin control box"""
-        return self.number_of_scans_to_avg.GetValue() * 1.0
+        return self.number_of_scans_to_avg.GetValue()
 
     @average_scans.setter
+    @dead_object_catcher
     def average_scans(self, num):
         """sets a new number in the 'Number of Scans to Average' spin control"""
         self.number_of_scans_to_avg.SetValue(num)
 
     @property
+    @dead_object_catcher
     def max_y(self):
         """returns the number displayed in the 'Y Max' spin control in the 'Axes
         Limits' section of the left panel"""
         return self.y_axis_max.GetValue()
 
     @max_y.setter
+    @dead_object_catcher
     def max_y(self, new_max):
         """sets a new value to the 'Y Max' spin control box"""
         try:
-            self.y_axis_max.SetValue(new_max)
+            self.y_axis_max.SetValue(round(new_max, 3))
         except OverflowError:
             self.y_axis_max.SetValue(17000)
 
     @property
+    @dead_object_catcher
     def min_y(self):
         """returns the number displayed in the 'Y Min' spin control box"""
         return self.y_axis_min.GetValue()
 
     @min_y.setter
+    @dead_object_catcher
     def min_y(self, new_min):
         """sets a new value to the 'Y Min' spin control box"""
         try:
-            self.y_axis_min.SetValue(new_min)
+            self.y_axis_min.SetValue(round(new_min, 3))
         except OverflowError:
             self.y_axis_min.SetValue(-17000)
 
     @property
+    @dead_object_catcher
     def max_x(self):
         """sets a new value to the 'X Max' spin control box"""
         return self.x_axis_max.GetValue()
 
     @max_x.setter
+    @dead_object_catcher
     def max_x(self, new_max):
         """sets a new value to the 'X Max' spin control box"""
-        self.x_axis_max.SetValue(new_max)
+        self.x_axis_max.SetValue(round(new_max, 3))
 
     @property
+    @dead_object_catcher
     def min_x(self):
         """sets a new value to the 'X Min' spin control box"""
         return self.x_axis_min.GetValue()
 
     @min_x.setter
+    @dead_object_catcher
     def min_x(self, new_min):
         """sets a new value to the 'X Min' spin control box"""
-        self.x_axis_min.SetValue(new_min)
+        self.x_axis_min.SetValue(round(new_min, 3))
 
     @property
     def label(self):
@@ -618,26 +631,32 @@ class ASPresentation(object):
         self.graph_panel.y_label = new_label
 
     @property
-    def markers(self):
-        """returns the indices of the dead pixels selected during calibration"""
-        return self.graph_panel.markers
-
-    @markers.setter
-    def markers(self, new_list):
-        """sets a new list of dead pixel markers to be displayed on the graph"""
-        self.graph_panel.markers = new_list
-
-    @property
+    @dead_object_catcher
     def integ_lines(self):
         """returns the x values of the displayed integration range lines that
         are displayed during EFD and PFD modes"""
         return [self.integ_min.GetValue(), self.integ_max.GetValue()]
 
     @integ_lines.setter
+    @dead_object_catcher
     def integ_lines(self, new_integ_range):
         """sets a new integration range on the plot"""
         self.integ_min.SetValue(new_integ_range[0])
         self.integ_max.SetValue(new_integ_range[1])
+
+    @property
+    @dead_object_catcher
+    def fractional_lines(self):
+        """returns the x values of the displayed integration range lines that
+        are displayed during EFD and PFD modes"""
+        return [self.fraction_min.GetValue(), self.fraction_max.GetValue()]
+
+    @fractional_lines.setter
+    @dead_object_catcher
+    def fractional_lines(self, new_fractional_range):
+        """sets a new integration range on the plot"""
+        self.fraction_min.SetValue(new_fractional_range[0])
+        self.fraction_max.SetValue(new_fractional_range[1])
 
     def enable_disconnect(self, enable=True):
         """enables/disables the disconnect option in the filemenu. This method
@@ -657,10 +676,14 @@ class ASPresentation(object):
         are still displayed and """
         self.integ_min.Enable(enable)
         self.integ_max.Enable(enable)
+        self.fraction_min.Enable(enable)
+        self.fraction_max.Enable(enable)
         if not lm:
-            self.graph_panel.vlines(enable, self.integ_lines)
+            self.graph_panel.vlines(enable, self.integ_lines,
+                                    self.fractional_lines)
         else:
-            self.graph_panel.vlines(lm, self.integ_lines)
+            self.graph_panel.vlines(lm, self.integ_lines,
+                                    self.fractional_lines)
 
     def enable_units(self):
         """depending on the mode and units selected with the radio controls in 
@@ -750,16 +773,16 @@ class ASPresentation(object):
         it to close properly."""
         return progress_dialog(title, msg, self.frame, total)
 
-    def progress_dialog(self, total_scans, generator):
+    def progress_dialog(self, settings, generator):
         """if total scans is zero, a gauge style dialog is used to indicate
         there is no defined end point. I think there might be a bug in this for
         windows xp users. every time I try to do continuous measurements on XP,
         it hangs for some reason. This may be the culprit. The main thread
         remains in this method and recieves it's data from a generator function
-        in ASControl.py (google generator functions if you don't know what these
-        do). Continually updates the progress dialog with returned value of the
-        generator, checks if cancel button has been pushed, and repeats until
-        generator has been terminated on the other end."""
+        in ASControl.py. Continually updates the progress dialog with returned
+        value of the generator, checks if cancel button has been pushed, and
+        repeats until generator has been terminated on the other end."""
+        total_scans = settings['total_scans']
         if total_scans == 0:
             dlg = wx.ProgressDialog("Data Capture Progress",
                                     "Collecting Data",
@@ -777,15 +800,19 @@ class ASPresentation(object):
                                     wx.PD_APP_MODAL |
                                     wx.PD_ELAPSED_TIME |
                                     wx.PD_ESTIMATED_TIME)
-        for scan in generator(total_scans):
+        for scan in generator(settings['total_scans'], settings['time_between_scans'],
+                              settings['log_temperature'], self.active_mode,
+                              self.active_unit):
             msg = "Collecting Data: %s" % scan
             if total_scans == 0:
                 cont, skip = dlg.Pulse(msg)
             else:
-                if scan >= total_scans:
+                if scan > total_scans:
                     break
                 msg += "/%s\n%.2f%% completed" % (
                     total_scans, float(scan)/total_scans * 100)
+                if scan == total_scans:
+                    continue
                 cont, skip = dlg.Update(scan, msg)
             if not cont:
                 dlg.Destroy()
@@ -820,6 +847,7 @@ class ASPresentation(object):
         """this is the connection settings dialog to get the slave_address and the
         com-port from the user. baud rate is hardcoded for now"""
         dlg = wx.Dialog(self.frame, -1, "Connection Settings")
+        dlg.SetBackgroundColour("white")
         dlg.CenterOnScreen()
         serial_label = wx.StaticText(dlg, -1, "Choose the Device")
         serial = wx.ComboBox(dlg, -1, choices=device_serials)
@@ -848,6 +876,7 @@ class ASPresentation(object):
         currently connected spectroradiometers. this method displays the dialog
         and returns the string of the selected device"""
         dlg = wx.Dialog(self.frame, -1, "Disconnect Device")
+        dlg.SetBackgroundColour("white")
         dlg.CenterOnScreen()
         text = wx.StaticText(dlg, -1, "Choose the device to disconnect")
         combo_box = wx.ComboBox(dlg, choices=current_devices)
@@ -878,6 +907,7 @@ class ASPresentation(object):
         interpreted by ASControl.py"""
         dlg = wx.Dialog(self.frame, -1, "Data-Capture Settings")
         dlg.CenterOnScreen()
+        dlg.SetBackgroundColour("white")
         number_o_scans_text = wx.StaticText(
             dlg, -1, "Number of scans\n(if left at zero," \
             " number of scans will be continuous)", style=wx.ALIGN_CENTER)
@@ -900,8 +930,8 @@ class ASPresentation(object):
         plot_to_screen.SetValue(False)
         set_start_time = wx.CheckBox(dlg, label="Use start time")
         start_time_text = wx.StaticText(dlg, -1, "Enter Start Time (24-hour)")
-        spin = wx.SpinButton(dlg, -1, wx.DefaultPosition, (-1,20), wx.SP_VERTICAL)
-        time24 = masked.TimeCtrl(dlg, -1, fmt24hr=True, spinButton=spin)
+        curr_time = datetime.datetime.strftime(datetime.datetime.now(), "%H:%M:%S")
+        time24 = masked.TimeCtrl(dlg, -1, curr_time, fmt24hr=True)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(number_o_scans_text, 0, wx.ALIGN_CENTER | wx.ALL, 5)
@@ -924,7 +954,6 @@ class ASPresentation(object):
         sizer.Add(start_time_text, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         h_sizer = wx.BoxSizer(wx.HORIZONTAL)
         h_sizer.Add(time24, 0, wx.ALIGN_CENTER | wx.ALL, 0)
-        h_sizer.Add(spin, 0, wx.ALIGN_CENTER | wx.ALL, 0)
         sizer.Add(h_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         button_sizer = wx.StdDialogButtonSizer()
         button_sizer.Add(wx.Button(dlg, wx.ID_OK), 0,
@@ -971,7 +1000,8 @@ class ASPresentation(object):
         if auto_scale:
             self.set_presented_limits(x_lim, y_lim)
 
-    def plot_multiline(self, plot_data, average=True, active_device=None):
+    def plot_multiline(self, plot_data, average=True, active_device=None,
+                       paired=[]):
         """esentialy the exact same thing as above but plots a multi-line graph
         for use with multiple sensors or when plotting from a file."""
         self.set_plot_settings(single_plot=False)
@@ -979,8 +1009,10 @@ class ASPresentation(object):
         self.graph_panel.plot_mode = self.active_mode
         self.show_average_button.SetValue(average)
         auto_scale = self.auto_scale_toggle.GetValue()
+        if self.active_mode not in [ENERGY_FLUX, ILLUMINANCE, PHOTON_FLUX]:
+            paired = []
         x_lim, y_lim = self.graph_panel.plot_multiline(
-            plot_data, average, auto_scale, active_device)
+            plot_data, average, auto_scale, active_device, paired)
         if auto_scale:
             self.set_presented_limits(x_lim, y_lim)
 
@@ -991,8 +1023,8 @@ class ASPresentation(object):
         and then plots accordingly"""
         try:
             if event.multiline:
-                self.plot_multiline(
-                    event.plot_data, event.average, event.active_device)
+                self.plot_multiline( event.plot_data, event.average,
+                                     self.active_device, event.paired)
                 return
         except AttributeError:
             pass
@@ -1070,75 +1102,42 @@ class ASPresentation(object):
         such) to prevent user from clicking buttons when it's hazardous to do so"""
         return wx.BusyInfo(msg, self.frame)
 
-    def set_calibration_mode(self, number_of_sensors, save_dark_pixel,
-                             clear_dark_pixels,light_ref_cal, device_ref_cal,
-                             dark_ref_cal, dark_ref_clear):
+    def set_calibration_mode(self, number_of_sensors, light_ref_cal,
+                             device_ref_cal):
         """this method adds or removes the calibration controls to/from the left
         panel. it is only activated using the ctrl-f10 hot key and should never
         be seen by customers."""
-        self.graph_panel.set_calibration_mode()
-        if self.graph_panel.calibrate_mode:
-            if not hasattr(self, "set_bad_pixels"):
+        self.calibrate_mode = not self.calibrate_mode
+        if self.calibrate_mode:
+            if not hasattr(self, "light_ref_cal"):
                 self.calib_text = wx.StaticText(self.left_panel, -1,
                                                 "Calibration Controls")
-                self.set_bad_pixels = wx.Button(
-                    self.left_panel, -1, label="Set Dead Pixels",
-                    size=(165, 35))
-                self.clear_bad_pixels = wx.Button(
-                    self.left_panel, -1, label="Clear Saved Dead Pixels",
-                    size=(165, 35))
                 self.light_ref_cal = wx.Button(
                     self.left_panel, -1, label="Light Reference Calibration",
-                    size=(165, 35))
+                    size=(160, 35))
                 self.device_ref_cal = wx.Button(
                     self.left_panel, -1, label="Device Reference Calibration",
-                    size=(165, 35))
-                self.dark_ref_cal = wx.Button(
-                    self.left_panel, -1, label="Dark Reference Calibration",
-                    size=(165, 35))
-                self.dark_ref_clear = wx.Button(
-                    self.left_panel, -1, label="Clear Dark Reference\nCalibration",
-                    size=(165, -1))
+                    size=(160, 35))
+                self.vertical_sizer.Add(wx.StaticLine(self.left_panel, -1), 0,
+                                        wx.EXPAND, 5)
                 self.vertical_sizer.Add(self.calib_text, 0,
-                                        wx.ALIGN_CENTER | wx.ALL, 1)
-                self.vertical_sizer.Add(self.set_bad_pixels, 0,
-                                        wx.ALIGN_CENTER | wx.ALL, 1)
-                self.vertical_sizer.Add(self.clear_bad_pixels, 0,
-                                        wx.ALIGN_CENTER | wx.ALL, 1)
+                                        wx.ALIGN_CENTER | wx.ALL, 8)
                 self.vertical_sizer.Add(self.light_ref_cal, 0,
                                         wx.ALIGN_CENTER | wx.ALL, 1)
                 self.vertical_sizer.Add(self.device_ref_cal, 0,
                                         wx.ALIGN_CENTER | wx.ALL, 1)
-                self.vertical_sizer.Add(self.dark_ref_cal, 0,
-                                        wx.ALIGN_CENTER | wx.ALL, 1)
-                self.vertical_sizer.Add(self.dark_ref_clear, 0,
-                                        wx.ALIGN_CENTER | wx.ALL, 1)
-                self.frame.Bind(wx.EVT_BUTTON, save_dark_pixel, self.set_bad_pixels)
-                self.frame.Bind(wx.EVT_BUTTON, clear_dark_pixels, self.clear_bad_pixels)
                 self.frame.Bind(wx.EVT_BUTTON, light_ref_cal, self.light_ref_cal)
                 self.frame.Bind(wx.EVT_BUTTON, device_ref_cal, self.device_ref_cal)
-                self.frame.Bind(wx.EVT_BUTTON, dark_ref_cal, self.dark_ref_cal)
-                self.frame.Bind(wx.EVT_BUTTON, dark_ref_clear, self.dark_ref_clear)
             else:
-                if number_of_sensors > 1:
-                    self.set_bad_pixels.Disable()
-                else:
-                    self.set_bad_pixels.Enable()
-                self.vertical_sizer.Show(28)
-                self.vertical_sizer.Show(29)
                 self.vertical_sizer.Show(30)
                 self.vertical_sizer.Show(31)
                 self.vertical_sizer.Show(32)
                 self.vertical_sizer.Show(33)
-                self.vertical_sizer.Show(34)
         else:
-            self.vertical_sizer.Hide(28)
-            self.vertical_sizer.Hide(29)
             self.vertical_sizer.Hide(30)
             self.vertical_sizer.Hide(31)
             self.vertical_sizer.Hide(32)
             self.vertical_sizer.Hide(33)
-            self.vertical_sizer.Hide(34)
         self.vertical_sizer.RecalcSizes()
         self.vertical_sizer.Layout()
         self.left_panel.SetSizer(self.vertical_sizer)
@@ -1155,6 +1154,8 @@ class ASPresentation(object):
         raph"""
         self.graph_panel.integ_lines = [self.integ_min.GetValue(),
                                         self.integ_max.GetValue()]
+        self.graph_panel.fractional_lines = [self.fraction_min.GetValue(),
+                                             self.fraction_max.GetValue()]
         self.draw()
 
     def draw(self):
@@ -1182,22 +1183,33 @@ class ASPresentation(object):
         sensor_toggle.Fit()
         self.tool_bar.Realize()
 
-    def pop_up_menu(self, handler):
+    def pop_up_menu(self, handler, can_pair, paired):
         """this is a popup menu that is displayed when you right-click on a 
         device toggle button. it allows you to rename or disconnect the device
         easily"""
         menu = wx.Menu()
         menu.Append(0, "Rename")
         menu.Append(1, "Disconnect")
+        menu.Append(4, "Reset")
+        if can_pair:
+            menu.Append(2, "Pair VIS with NIR")
+        if paired:
+            menu.Append(3, "Unpair Sensors")
+        if self.calibrate_mode:
+            menu.Append(5, "Set Device Serial")
         self.frame.Bind(wx.EVT_MENU, handler, id=0)
         self.frame.Bind(wx.EVT_MENU, handler, id=1)
+        self.frame.Bind(wx.EVT_MENU, handler, id=2)
+        self.frame.Bind(wx.EVT_MENU, handler, id=3)
+        self.frame.Bind(wx.EVT_MENU, handler, id=4)
+        self.frame.Bind(wx.EVT_MENU, handler, id=5)
         self.frame.PopupMenu(menu)
         menu.Destroy()
 
     def on_device_toggle(self, event=None, button=None):
         """because there is no bitmap toggle radio toolbar control combo
         (go figure right), I made my own! this method allows the sensor toggle 
-        bottuns to behave as radio buttons in that only one may be active at any
+        buttons to behave as radio buttons in that only one may be active at any
         given time.""" 
         if event:
             button = event.GetEventObject()
@@ -1228,8 +1240,10 @@ class ASPresentation(object):
         """renames the device to pretty much whatever the user wants to name
         their device."""
         dlg = wx.Dialog(self.frame, -1, "Rename")
+        dlg.SetBackgroundColour("white")
         text = wx.StaticText(dlg, -1, "Rename device '%s' to:" % old_name)
         new_name = wx.TextCtrl(dlg, -1, old_name)
+        new_name.SetMaxLength(16)
         button_sizer = wx.StdDialogButtonSizer()
         button_sizer.Add(wx.Button(dlg, wx.ID_OK), 0,
                          wx.ALIGN_CENTER | wx.ALL, 5)
@@ -1247,6 +1261,30 @@ class ASPresentation(object):
             name = new_name.GetValue()
         dlg.Destroy()
         return name
+
+    def reserialize_device(self, old_serial):
+        """reserializes the device to pretty much whatever we want to to."""
+        dlg = wx.Dialog(self.frame, -1, "Set Serial")
+        dlg.SetBackgroundColour("white")
+        text = wx.StaticText(dlg, -1, "Change device serial from '%s' to:" % old_serial)
+        new_serial = wx.TextCtrl(dlg, -1, old_serial)
+        button_sizer = wx.StdDialogButtonSizer()
+        button_sizer.Add(wx.Button(dlg, wx.ID_OK), 0,
+                         wx.ALIGN_CENTER | wx.ALL, 5)
+        button_sizer.Add(wx.Button(dlg, wx.ID_CANCEL), 0,
+                         wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(text, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer.Add(new_serial, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        dlg.SetSizer(sizer)
+        dlg.Fit()
+        dlg.CenterOnScreen()
+        serial = ""
+        if dlg.ShowModal() == wx.ID_OK:
+            serial = new_serial.GetValue()
+        dlg.Destroy()
+        return serial
 
     def set_auto_scale(self, en):
         """this enables/disables the use of the 'Axes Limits' controls based on
@@ -1298,6 +1336,119 @@ class ASPresentation(object):
             del(self.help_frame)
             self.show_help_menu(menu_tab)
 
+    def get_red_farred(self, current):
+        dlg = wx.Dialog(self.frame, -1, "Update Red and Far Red Range")
+        dlg.SetBackgroundColour("white")
+        red_label = wx.StaticText(dlg, -1, "Red Range")
+        r_max_text = wx.StaticText(dlg, -1, "Max")
+        r_min_text = wx.StaticText(dlg, -1, "Min")
+        r_axis_min = wx.SpinCtrl(dlg,  min=340, max=1100,
+                                 size=(70, -1))
+        r_axis_min.SetValue(current[0][0])
+        r_axis_max = wx.SpinCtrl(dlg,  min=340, max=1100,
+                                 size=(70, -1))
+        r_axis_max.SetValue(current[0][1])
+        farred_label = wx.StaticText(dlg, -1, "Far Red Range")
+        fr_max_text = wx.StaticText(dlg, -1, "Max")
+        fr_min_text = wx.StaticText(dlg, -1, "Min")
+        fr_axis_min = wx.SpinCtrl(dlg,  min=340, max=1100,
+                                 size=(70, -1))
+        fr_axis_min.SetValue(current[1][0])
+        fr_axis_max = wx.SpinCtrl(dlg,  min=340, max=1100,
+                                 size=(70, -1))
+        fr_axis_max.SetValue(current[1][1])
+
+
+        divider = wx.StaticLine(dlg, -1)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
+        sizer.Add(red_label, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        v_sizer = wx.BoxSizer(wx.VERTICAL)
+        v_sizer.Add(r_min_text, 1, wx.ALIGN_CENTER | wx.ALL)
+        v_sizer.Add(r_axis_min, 1, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
+
+        v_sizer = wx.BoxSizer(wx.VERTICAL)
+        v_sizer.Add(r_max_text, 1, wx.ALIGN_CENTER | wx.ALL)
+        v_sizer.Add(r_axis_max, 1, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
+
+        sizer.Add(horizontal_sizer, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        sizer.AddSpacer(10)
+
+        sizer.Add(farred_label, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        v_sizer = wx.BoxSizer(wx.VERTICAL)
+        v_sizer.Add(fr_min_text, 1, wx.ALIGN_CENTER | wx.ALL)
+        v_sizer.Add(fr_axis_min, 1, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
+
+        v_sizer = wx.BoxSizer(wx.VERTICAL)
+        v_sizer.Add(fr_max_text, 1, wx.ALIGN_CENTER | wx.ALL)
+        v_sizer.Add(fr_axis_max, 1, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer.Add(v_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
+
+        sizer.Add(horizontal_sizer, 0, wx.ALIGN_CENTER | wx.ALL)
+
+        divider = wx.StaticLine(dlg, -1)
+        sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
+
+        button_sizer = wx.StdDialogButtonSizer()
+        button_sizer.Add(wx.Button(dlg, wx.ID_OK), 0,
+                         wx.ALIGN_CENTER | wx.ALL, 5)
+        button_sizer.Add(wx.Button(dlg, wx.ID_CANCEL), 0,
+                         wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, border=5)
+
+        dlg.SetSizer(sizer)
+        dlg.Fit()
+        if dlg.ShowModal() == wx.ID_OK:
+            return ([r_axis_min.GetValue(), r_axis_max.GetValue()],
+                    [fr_axis_min.GetValue(), fr_axis_max.GetValue()])
+        return None
+
+    def get_sensor_pair(self, selected, choices):
+        dlg = wx.Dialog(self.frame, -1, "Choose Sensor Pair")
+        dlg.SetBackgroundColour("white")
+        dlg.CenterOnParent()
+        text = wx.StaticText(dlg, -1, "Choose a sensor to pair with %s" % selected)
+        cb = wx.ComboBox(dlg, -1, choices=choices)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        button_sizer = wx.StdDialogButtonSizer()
+        button_sizer.Add(wx.Button(dlg, wx.ID_OK), 0,
+                         wx.ALIGN_CENTER | wx.ALL, 5)
+        button_sizer.Add(wx.Button(dlg, wx.ID_CANCEL), 0,
+                         wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer.Add(text, 0, wx.ALIGN_CENTER | wx.ALL, border=5)
+        sizer.Add(cb, 0, wx.ALIGN_CENTER | wx.ALL, border=5)
+        sizer.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, border=5)
+        dlg.SetSizer(sizer)
+        dlg.Fit()
+        if dlg.ShowModal() == wx.ID_OK:
+            return cb.GetValue()
+        return ""
+
+    def set_pair(self, pair):
+        if not IS_WIN:
+            image_path = 'image_source/paired_sensor.jpg'
+        else:
+            image_path = 'image_source\\paired_sensor.jpg'
+        for sensor in self.sensors:
+            if sensor.GetLabel() in pair:
+                sensor.SetBitmapLabel(wx.Bitmap(image_path))
+        self.tool_bar.Refresh()
+
+    def remove_pair(self, pair):
+        if not IS_WIN:
+            image_path = 'image_source/sensor.jpg'
+        else:
+            image_path = 'image_source\\sensor.jpg'
+        for sensor in self.sensors:
+            if sensor.GetLabel() in pair:
+                sensor.SetBitmapLabel(wx.Bitmap(image_path))
+                sensor.Refresh()
+        self.tool_bar.Refresh()
 
 class HelpPanel(wx.Panel):
     def __init__(self, parent, text):

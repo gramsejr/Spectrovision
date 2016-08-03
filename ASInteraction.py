@@ -19,6 +19,8 @@ class ASInteraction(object):
                                 id=101)
         presentation.frame.Bind(wx.EVT_MENU, self.on_menu_disconnect,
                                 id=102)
+        presentation.frame.Bind(wx.EVT_MENU, self.on_menu_red_farred,
+                                id=103)
         presentation.frame.Bind(wx.EVT_MENU, self.on_menu_exit, id=wx.ID_EXIT)
 
         # view menu
@@ -103,6 +105,14 @@ class ASInteraction(object):
         presentation.frame.Bind(wx.EVT_TEXT_ENTER, self.on_integ_range_change,
                                 presentation.integ_max)
         presentation.frame.Bind(wx.EVT_TEXT_ENTER, self.on_integ_range_change,
+                                presentation.fraction_min)
+        presentation.frame.Bind(wx.EVT_SPINCTRL, self.on_integ_range_change,
+                                presentation.fraction_max)
+        presentation.frame.Bind(wx.EVT_SPINCTRL, self.on_integ_range_change,
+                                presentation.fraction_min)
+        presentation.frame.Bind(wx.EVT_TEXT_ENTER, self.on_integ_range_change,
+                                presentation.fraction_max)
+        presentation.frame.Bind(wx.EVT_TEXT_ENTER, self.on_integ_range_change,
                                 presentation.integ_min)
         presentation.frame.Bind(wx.EVT_SPINCTRLDOUBLE, self.on_y_axis_change,
                                 presentation.y_axis_max)
@@ -162,7 +172,8 @@ class ASInteraction(object):
         presentation.frame.Bind(wx.EVT_MENU, self.on_copy_graph_image,
                                 id=wx.ID_COPY)
         presentation.frame.Bind(wx.EVT_MENU, self.on_open_file, id=wx.ID_OPEN)
-
+        # capture close so we can shutdown non daemon threads on exit
+        presentation.frame.Bind(wx.EVT_CLOSE, self.on_close)
     # these methods catch the interrupts sent from the presentations controls
     # and direct them to methods in ASControl.py
 
@@ -175,8 +186,15 @@ class ASInteraction(object):
     def on_menu_disconnect(self, event):
         self.control.disconnect_device()
 
+    def on_menu_red_farred(self, event):
+        self.control.update_red_farred()
+
     def on_menu_exit(self, event):
         self.control.shutdown_application()
+
+    def on_close(self, event):
+        self.control.stop_all_threads()
+        event.Skip()
 
     def on_view_menu(self, event, raw=False, r_t=False, pf=False, ef=False,
                      lx=False, fc=False):
