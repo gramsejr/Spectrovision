@@ -83,7 +83,7 @@ class ASPresentation(object):
         self.horizontal_splitter.SetSashInvisible()
         self.vertical_splitter.SetMinimumPaneSize(25)
         self.vertical_splitter.SplitVertically(self.horizontal_splitter,
-                                               self.graph_panel, 160)
+                                               self.graph_panel, 175)
         self.vertical_splitter.SetSashInvisible()
 
         apogee_logo = wx.StaticBitmap(
@@ -438,6 +438,7 @@ class ASPresentation(object):
 
         # set the sizer of the left panel
         self.left_panel.SetSizer(self.vertical_sizer)
+        self.left_panel.Bind(wx.EVT_SCROLL, self.left_panel.Sizer.Layout)
 
         # i'm putting these binding here because I don't want to create a
         # workaround from GraphPanel.py -> ASInteraction.py -> ASControl.py ->
