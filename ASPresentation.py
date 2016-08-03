@@ -76,9 +76,11 @@ class ASPresentation(object):
         self.graph_panel = GraphPanel(self.vertical_splitter)
         self.horizontal_splitter.SetMinimumPaneSize(60)
         self.horizontal_splitter.SplitHorizontally(self.left_panel, self.bottom_left_panel, -60)
+        self.horizontal_splitter.SetSashInvisible()
         self.vertical_splitter.SetMinimumPaneSize(25)
         self.vertical_splitter.SplitVertically(self.horizontal_splitter,
                                                self.graph_panel, 160)
+        self.vertical_splitter.SetSashInvisible()
 
         apogee_logo = wx.StaticBitmap(
             self.bottom_left_panel, -1, wx.Bitmap(img_src % "ApogeeLogo.png"),
@@ -327,9 +329,9 @@ class ASPresentation(object):
         self.fraction_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
         self.fraction_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
         self.y_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.y_axis_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.x_axis_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.x_axis_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.y_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.x_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.x_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
 
 
         # toggle button plot options
