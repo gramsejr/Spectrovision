@@ -326,10 +326,10 @@ class ASPresentation(object):
         self.integ_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
         self.fraction_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
         self.fraction_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.y_axis_min.Bind(wx.EVT_SET_CURSOR, self.number_pad)
-        self.y_axis_max.Bind(wx.EVT_SET_CURSOR, self.number_pad)
-        self.x_axis_min.Bind(wx.EVT_SET_CURSOR, self.number_pad)
-        self.x_axis_max.Bind(wx.EVT_SET_CURSOR, self.number_pad)
+        self.y_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.y_axis_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.x_axis_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.x_axis_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
 
 
         # toggle button plot options
