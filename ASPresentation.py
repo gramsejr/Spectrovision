@@ -7,6 +7,7 @@ import sys
 
 import wx
 from wx.lib.buttons import GenBitmapTextToggleButton
+from wx.lib.dragscroller import DragScroller
 from wx.lib.scrolledpanel import ScrolledPanel
 import wx.lib.masked as masked
 
@@ -73,6 +74,9 @@ class ASPresentation(object):
         self.left_panel = ScrolledPanel(self.horizontal_splitter, -1)
         self.left_panel.SetBackgroundColour((218,238,255))
         self.left_panel.SetWindowStyle(wx.RAISED_BORDER)
+        self.left_panel.scroller = DragScroller(self.left_panel)
+        self.left_panel.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
+        self.left_panel.Bind(wx.EVT_LEFT_UP, self.on_left_up)
         self.graph_panel = GraphPanel(self.vertical_splitter)
         self.horizontal_splitter.SetMinimumPaneSize(60)
         self.horizontal_splitter.SplitHorizontally(self.left_panel, self.bottom_left_panel, -60)
@@ -454,6 +458,13 @@ class ASPresentation(object):
         self.frame.Maximize()
 
         self.enable_units()
+
+    def on_left_down(self, event):
+        self.left_panel.scroller.Start(event.GetPosition())
+
+    def on_left_up(self, event):
+        self.left_panel.scroller.Stop()
+
 
     @property
     @dead_object_catcher
@@ -1166,6 +1177,8 @@ class ASPresentation(object):
     def update_vlines(self):
         """updates the positions of the red integration range indicators on the
         raph"""
+        if not self.integ_min.IsEnabled():
+            return
         self.graph_panel.integ_lines = [self.integ_min.GetValue(),
                                         self.integ_max.GetValue()]
         self.graph_panel.fractional_lines = [self.fraction_min.GetValue(),
@@ -1464,17 +1477,11 @@ class ASPresentation(object):
                 sensor.Refresh()
         self.tool_bar.Refresh()
 
-    def number_pad(self, event):
+    def number_pad(self, widget):
         from constants import SERVICED
-        #event.Skip()
         if SERVICED:
             SERVICED = False
             return
-        widget = event.GetEventObject()
-        #if widget.Name == 'text':
-            #widget.Bind(wx.EVT_CHILD_FOCUS, None)
-        #else:
-            #widget.Unbind(wx.EVT_SET_FOCUS)
         dlg = wx.Dialog(self.frame, -1, 'Number Entry')
         dlg.SetBackgroundColour("white")
         number = wx.TextCtrl(dlg, -1, str(widget.GetValue()), size=(120, -1))
@@ -1491,6 +1498,8 @@ class ASPresentation(object):
         zero = wx.Button(dlg, -1, "0", size=(38,38))
         backspace = wx.Button(dlg, -1, "<---", size=(38, 38))
         decimal = wx.Button(dlg, -1, ".", size=(38, 38))
+        negate = wx.Button(dlg, -1, "+/-", size=(38,38))
+        clear = wx.Button(dlg, -1, "Clear", size=(78, 38))
         def update_number(event):
             selection = number.GetSelection()
             label = event.GetEventObject().GetLabel()
@@ -1500,6 +1509,14 @@ class ASPresentation(object):
                     number.SetValue(number.GetValue().replace(selection, ''))
                 else:
                     number.SetValue(number.GetValue()[:-1])
+            elif label == "Clear":
+                number.SetValue("")
+            elif label == "+/-":
+                current = number.GetValue()
+                if current and current[0] == '-':
+                    number.SetValue(current[1:])
+                else:
+                    number.SetValue('-' + current)
             else:
                 if selection:
                     number.SetValue(number.GetValue().replace(selection, label))
@@ -1517,6 +1534,8 @@ class ASPresentation(object):
         zero.Bind(wx.EVT_BUTTON, update_number)
         backspace.Bind(wx.EVT_BUTTON, update_number)
         decimal.Bind(wx.EVT_BUTTON, update_number)
+        negate.Bind(wx.EVT_BUTTON, update_number)
+        clear.Bind(wx.EVT_BUTTON, update_number)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(number, 0, wx.CENTER | wx.ALL, 5)
         grid_sizer = wx.GridSizer(4, 3, 2, 2)
@@ -1529,15 +1548,22 @@ class ASPresentation(object):
         grid_sizer.Add(seven)
         grid_sizer.Add(eight)
         grid_sizer.Add(nine)
-        grid_sizer.Add(backspace)
+        grid_sizer.Add(negate)
         grid_sizer.Add(zero)
         grid_sizer.Add(decimal)
-        sizer.Add(grid_sizer, flag=wx.CENTER | wx.ALL)
-        ok = wx.Button(dlg, wx.ID_OK, size=(55, -1))
-        cncl = wx.Button(dlg, wx.ID_CANCEL, size=(55, -1))
         h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        h_sizer.Add(ok, border=3)
-        h_sizer.Add(cncl, border=3)
+        h_sizer.Add(backspace, border=4)
+        h_sizer.AddSpacer(2)
+        h_sizer.Add(clear, border=4)
+        sizer.Add(grid_sizer, flag=wx.CENTER | wx.ALL)
+        sizer.AddSpacer(2)
+        sizer.Add(h_sizer, flag=wx.CENTER | wx.ALL)
+        ok = wx.Button(dlg, wx.ID_OK, size=(58, -1))
+        cncl = wx.Button(dlg, wx.ID_CANCEL, size=(58, -1))
+        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        h_sizer.Add(ok, border=4)
+        h_sizer.AddSpacer(2)
+        h_sizer.Add(cncl, border=4)
         sizer.Add(h_sizer, flag=wx.CENTER | wx.ALL, border=7)
         dlg.SetSizer(sizer)
         dlg.Fit()
@@ -1545,16 +1571,13 @@ class ASPresentation(object):
         self.stop_button.SetFocus()
         if dlg.ShowModal() == wx.ID_OK:
             try:
-                widget.SetValue(number.GetValue())
-            except TypeError:
-                try:
+                if widget.Name == 'text':
+                    widget.Parent.SetValue(float(number.GetValue()))
+                else:
                     widget.SetValue(int(float(number.GetValue())))
-                except Exception:
-                    pass
+            except Exception:
+                pass
         SERVICED = True
-        #widget.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
-        #widget.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        #event.Skip()
 
 class HelpPanel(wx.Panel):
     def __init__(self, parent, text):

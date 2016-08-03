@@ -1601,3 +1601,15 @@ class ASControl(object):
         new_ranges = self.prsnt.get_red_farred(RED_FARRED)
         if new_ranges is not None:
             RED_FARRED = new_ranges
+
+    def update_spin_ctrls(self, widget):
+        self.prsnt.number_pad(widget)
+        if widget == self.prsnt.integration_time:
+            self.update_integration_time()
+        elif widget == self.prsnt.number_of_scans_to_avg:
+            self.update_number_of_scans_to_average()
+        elif type(widget) == wx.SpinCtrl:
+            self.update_vlines()
+        else:
+            self.validate_and_update_x_axis()
+            self.validate_and_update_y_axis()

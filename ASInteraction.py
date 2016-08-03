@@ -137,6 +137,18 @@ class ASInteraction(object):
         presentation.frame.Bind(wx.EVT_TOGGLEBUTTON, self.on_show_average,
                                 presentation.show_average_button)
 
+        presentation.integration_time.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.number_of_scans_to_avg.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.integ_min.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.integ_max.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.fraction_min.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.fraction_max.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.y_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.y_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.x_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.x_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+
+
         self.axis_controls = [presentation.y_axis_min, presentation.y_axis_max,
                               presentation.x_axis_min, presentation.x_axis_max]
 
@@ -316,3 +328,6 @@ class ASInteraction(object):
 
     def on_swtich_to_calibrate_mode(self, event):
         self.control.set_calibrate_mode()
+
+    def on_spin_ctrl_focus(self, event):
+        self.control.update_spin_ctrls(event.GetEventObject())
