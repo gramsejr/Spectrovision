@@ -101,7 +101,7 @@ class GraphPanel(wx.Panel):
         self.axes.plot(self.x_data, [0] * 481, label='Scan 0')
         self.axes.legend(loc=1)
         self.canvas = FigureCanvasWxAgg(self, -1, figure)
-        figure.tight_layout()
+        figure.tight_layout(pad=2.0)
         sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL)
         sizer.AddSpacer(20)
         add_toolbar(sizer, self.canvas)

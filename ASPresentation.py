@@ -78,7 +78,7 @@ class ASPresentation(object):
         self.horizontal_splitter.SplitHorizontally(self.left_panel, self.bottom_left_panel, -60)
         self.vertical_splitter.SetMinimumPaneSize(25)
         self.vertical_splitter.SplitVertically(self.horizontal_splitter,
-                                               self.graph_panel, 150)
+                                               self.graph_panel, 160)
 
         apogee_logo = wx.StaticBitmap(
             self.bottom_left_panel, -1, wx.Bitmap(img_src % "ApogeeLogo.png"),
@@ -449,7 +449,7 @@ class ASPresentation(object):
         # show and maximize frame
         self.left_panel.SetupScrolling()
         self.frame.Show()
-        #self.frame.Maximize()
+        self.frame.Maximize()
 
         self.enable_units()
 
