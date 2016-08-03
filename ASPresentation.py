@@ -13,7 +13,7 @@ import wx.lib.masked as masked
 from constants import VERSION, IS_GTK, IS_WIN, IS_MAC, RELATIVE, PHOTON_FLUX, \
      RT, ENERGY_FLUX, LUX, FOOTCANDLE, ILLUMINANCE, WX_WM2_LABEL, \
      WX_MICROMOL_LABEL, WX_LUX_LABEL, WX_FC_LABEL, LEFTPANEL_HELP, MENUBAR_HELP, \
-     TOOLBAR_HELP, PLOTVIEW_HELP, ABOUT_TEXT
+     TOOLBAR_HELP, PLOTVIEW_HELP, ABOUT_TEXT, SERVICED
 from ASControl import EVT_ERROR, PLOT_EVT, STATUS_EVT, TOOLBAR_EVT
 from GraphPanel import GraphPanel, CUSTOM_EVT
 from Messages import ok_cancel, give_error, confirmation_message, time_control, \
@@ -319,6 +319,18 @@ class ASPresentation(object):
         self.x_axis_max = wx.SpinCtrlDouble(self.left_panel, min=301, inc=0.01,
                                             max=1140, size=(60, -1),
                                             style=wx.TE_PROCESS_ENTER)
+
+        self.integration_time.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.number_of_scans_to_avg.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.integ_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.integ_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.fraction_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.fraction_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.y_axis_min.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
+        self.y_axis_max.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
+        self.x_axis_min.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
+        self.x_axis_max.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
+
 
         # toggle button plot options
         self.set_auto_scale(en=False)
@@ -1449,6 +1461,101 @@ class ASPresentation(object):
                 sensor.SetBitmapLabel(wx.Bitmap(image_path))
                 sensor.Refresh()
         self.tool_bar.Refresh()
+
+    def number_pad(self, event):
+        from constants import SERVICED
+        if SERVICED:
+            SERVICED = False
+            #event.Skip()
+            return
+        widget = event.GetEventObject()
+        if widget.Name == 'text':
+            widget.Unbind(wx.EVT_CHILD_FOCUS)
+        else:
+            widget.Unbind(wx.EVT_SET_FOCUS)
+        dlg = wx.Dialog(self.frame, -1, 'Number Entry')
+        dlg.SetBackgroundColour("white")
+        number = wx.TextCtrl(dlg, -1, str(widget.GetValue()), size=(120, -1))
+        number.SetSelection(-1, -1)
+        one = wx.Button(dlg, -1, "1", size=(38,38))
+        two = wx.Button(dlg, -1, "2", size=(38,38))
+        three = wx.Button(dlg, -1, "3", size=(38,38))
+        four = wx.Button(dlg, -1, "4", size=(38,38))
+        five = wx.Button(dlg, -1, "5", size=(38,38))
+        six = wx.Button(dlg, -1, "6", size=(38,38))
+        seven = wx.Button(dlg, -1, "7", size=(38,38))
+        eight = wx.Button(dlg, -1, "8", size=(38,38))
+        nine = wx.Button(dlg, -1, "9", size=(38,38))
+        zero = wx.Button(dlg, -1, "0", size=(38,38))
+        backspace = wx.Button(dlg, -1, "<---", size=(38, 38))
+        decimal = wx.Button(dlg, -1, ".", size=(38, 38))
+        def update_number(event):
+            selection = number.GetSelection()
+            label = event.GetEventObject().GetLabel()
+            selection = number.GetValue()[selection[0]:selection[1]]
+            if label == "<---":
+                if selection:
+                    number.SetValue(number.GetValue().replace(selection, ''))
+                else:
+                    number.SetValue(number.GetValue()[:-1])
+            else:
+                if selection:
+                    number.SetValue(number.GetValue().replace(selection, label))
+                else:
+                    number.SetValue(number.GetValue() + label)
+        one.Bind(wx.EVT_BUTTON, update_number)
+        two.Bind(wx.EVT_BUTTON, update_number)
+        three.Bind(wx.EVT_BUTTON, update_number)
+        four.Bind(wx.EVT_BUTTON, update_number)
+        five.Bind(wx.EVT_BUTTON, update_number)
+        six.Bind(wx.EVT_BUTTON, update_number)
+        seven.Bind(wx.EVT_BUTTON, update_number)
+        eight.Bind(wx.EVT_BUTTON, update_number)
+        nine.Bind(wx.EVT_BUTTON, update_number)
+        zero.Bind(wx.EVT_BUTTON, update_number)
+        backspace.Bind(wx.EVT_BUTTON, update_number)
+        decimal.Bind(wx.EVT_BUTTON, update_number)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(number, 0, wx.CENTER | wx.ALL, 5)
+        grid_sizer = wx.GridSizer(4, 3, 2, 2)
+        grid_sizer.Add(one)
+        grid_sizer.Add(two)
+        grid_sizer.Add(three)
+        grid_sizer.Add(four)
+        grid_sizer.Add(five)
+        grid_sizer.Add(six)
+        grid_sizer.Add(seven)
+        grid_sizer.Add(eight)
+        grid_sizer.Add(nine)
+        grid_sizer.Add(backspace)
+        grid_sizer.Add(zero)
+        grid_sizer.Add(decimal)
+        sizer.Add(grid_sizer, flag=wx.CENTER | wx.ALL)
+        ok = wx.Button(dlg, wx.ID_OK, size=(55, -1))
+        cncl = wx.Button(dlg, wx.ID_CANCEL, size=(55, -1))
+        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        h_sizer.Add(ok, border=3)
+        h_sizer.Add(cncl, border=3)
+        sizer.Add(h_sizer, flag=wx.CENTER | wx.ALL, border=7)
+        dlg.SetSizer(sizer)
+        dlg.Fit()
+        dlg.CenterOnParent()
+        if dlg.ShowModal() == wx.ID_OK:
+            try:
+                widget.SetValue(number.GetValue())
+            except TypeError:
+                pass
+            try:
+                widget.SetValue(int(float(number.GetValue())))
+            except Exception:
+                pass
+        SERVICED = True
+        if widget.Name == 'text':
+            widget.Bind(wx.EVT_CHILD_FOCUS, self.number_pad)
+        else:
+            widget.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.auto_integration.SetFocus()
+        #event.Skip()
 
 class HelpPanel(wx.Panel):
     def __init__(self, parent, text):

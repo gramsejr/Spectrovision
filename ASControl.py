@@ -478,7 +478,7 @@ class ASControl(object):
         if not possible:
             self.prsnt.give_error(
                 'Device Not Connected',
-                'There is no spectroradiometer connected to this computer.')
+                'There is no spectroradiometer connected to the Mesa.')
             return
         devices = []
         #sleep(0.5)

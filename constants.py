@@ -16,6 +16,8 @@ ENERGY_FLUX = 2
 PHOTON_FLUX = 3
 ILLUMINANCE = 4
 
+SERVICED = False
+
 RED_FARRED = ([635, 685], [710,760])
 
 MODE_TO_UNITS = ['Relative', 'Relative', 'Watts', 'umols', '%s']
