@@ -57,7 +57,7 @@ class ASControl(object):
         self.data_collection = False
         interaction.install(self, presentation)
         self.red_farred = ([635, 685], [710,760])
-        self.active_mode = 0
+        self.active_mode = COUNTS
 
     @property
     def active_device(self):
@@ -115,6 +115,7 @@ class ASControl(object):
             j = 1
             while j < len(data):
                 elements = list(data[j])
+                elements = ['0' if i == '-' else i for i in elements]
                 # if elements[0] == timestamp, then we have encountered a file
                 # with data from two different sensors. start a new dictionary
                 # as if the following data was from a seperate file
@@ -122,18 +123,13 @@ class ASControl(object):
                     file_contents.append(dictionary)
                     dictionary = {}
                     dictionary['labels'] = []
-                    while True:
-                        try:
-                            elements.remove('-')
-                        except ValueError:
-                            break
                     dictionary['x_data'] = map(lambda x: float(x),
                                                elements[2:-8])
                     dictionary['y_data'] = []
                     j += 1
                     elements = data[j]
                 dictionary['labels'].append(elements[0])
-                y_data = list(elements[2:-2]) # exclude temperature
+                y_data = list(elements[2:-1]) # exclude temperature
                 try:
                     y_data.remove('')
                 except ValueError:
@@ -286,7 +282,10 @@ class ASControl(object):
             for dev in self.devices:
                 dev.start_measurement()
             wx.YieldIfNeeded()
-            sleep(self.devices[0].prev_integ/1000000.0*self.devices[0].avg_scans + 0.01)
+            inc = (self.devices[0].prev_integ/1000000.0*self.devices[0].avg_scans + 0.01)/10
+            for i in range(10):
+                sleep(inc)
+                wx.YieldIfNeeded()
             for dev in self.devices:
                 yield i
                 try:
@@ -376,7 +375,7 @@ class ASControl(object):
                 if not non_matching:
                     mode = 'w'
             content = ['%s %s' % (
-                datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d"),
+                datetime.datetime.now().strftime("%H:%M:%S %Y/%m/%d"),
                 self.devices[0].name), MODE_TO_UNITS[active_mode]]
             if self.abstr.current_file_type == 'NIR':
                 content += self.abstr.y_data[0][:466] + ['-'] * 15 + \
@@ -415,7 +414,7 @@ class ASControl(object):
                     content = ["%s" % new_col[i] for i in range(491)]
                 for y_data in scan_data['y_data']:
                     new_col =['%s %s' % (
-                        datetime.datetime.now().strftime("%H:%M:%S %Y-%m-%d"),
+                        datetime.datetime.now().strftime("%H:%M:%S %Y/%m/%d"),
                         scan_data['labels'][0]), MODE_TO_UNITS[active_mode]]
                     if len(y_data) < 480:
                         new_col += y_data[:466] + ['-'] * 15 + y_data[466:]
@@ -623,12 +622,13 @@ class ASControl(object):
         PostEvent(self.prsnt.frame, evt)
         evt = toolbar_event(enable=False)
         PostEvent(self.prsnt.frame, evt)
+        self.prsnt.show_average_button.SetValue(False)
+        self.prsnt.color_map.Disable()
         if self.start_thread.is_set():
             return
         self.start_thread.set()
         for device in self.devices:
             device.change_units.set()
-        self.prsnt.show_average_button.SetValue(False)
         self.abstr.multi_plot_data = {}
         plot_thread = Thread(target=self.plot_data, name="Plot Thread")
         plot_thread.start()
@@ -752,11 +752,6 @@ class ASControl(object):
         except Exception:
             pass
 
-    def wait(self):
-        wait_time = max(self.abstr.integ_time/1000000 * \
-                        self.abstr.average_scans-1, 0)
-        sleep(wait_time)
-
     def get_active_signal_data(self, device):
         """determines which plot mode is active and returns the data
         accordingly"""
@@ -768,7 +763,7 @@ class ASControl(object):
             device.update_integ.clear()
         if device.update_average_scans.is_set():
             device.set_scans_to_avg(self.abstr.average_scans)
-            dev.update_average_scans.clear()
+            device.update_average_scans.clear()
         if active_mode == RELATIVE:
             self.get_relative_signal(device)
         elif active_mode == RT:
@@ -808,7 +803,10 @@ class ASControl(object):
                 self.prsnt.label = MICROMOL_LABEL
             device.change_units.clear()
         device.start_measurement()
-        sleep((device.prev_integ/1000000.0) * device.avg_scans)
+        inc = (device.prev_integ/1000000.0 * device.avg_scans + 0.01)/10
+        for i in range(10):
+            sleep(inc)
+            wx.YieldIfNeeded()
         device.acquire_measurement()
         if active_unit == LUX:
             device.y_data = self.calculate_lux(device.y_data, device.x_data)
@@ -954,10 +952,15 @@ class ASControl(object):
         self.prsnt.clear_dark_ref.Enable()
         self.prsnt.confirmation_message("Dark Reference Saved", "Success!")
         device.dark_ref_taken = True
+        auto_int = self.abstr.auto_integrate
+        self.set_auto_integration(False)
+        self.prsnt.auto_integration.SetValue(False)
         if cont_play:
             self.start_plot_threads()
         else:
             self.take_and_plot_snapshot()
+            self.set_auto_integration(auto_int)
+            self.prsnt.auto_integration.SetValue(auto_int)
 
     def set_light_reference(self):
         """save a light reference spectrum for reflectance/transmittance"""
@@ -1369,6 +1372,7 @@ class ASControl(object):
                     return
         self.prsnt.current_process("Plotting Snapshot")
         busy = self.prsnt.busy("Taking a measurement...")
+        wx.Yield()
         for dev in self.devices:
             if dev.change_units.is_set():
                 if self.prsnt.active_mode in [ENERGY_FLUX, ILLUMINANCE]:
@@ -1397,7 +1401,11 @@ class ASControl(object):
         if len(self.devices) > 1:
             for dev in self.devices:
                 dev.start_measurement()
-            sleep(self.devices[-1].prev_integ/1000000.0)
+            inc = ((self.devices[-1].prev_integ/1000000.0 + 0.01) * \
+                   self.devices[-1].avg_scans)/10
+            for i in range(10):
+                sleep(inc)
+                wx.YieldIfNeeded()
             self.pull_multi_device_data()
             self.prsnt.integ_time = self.abstr.integ_time = \
                 self.active_device.prev_integ
@@ -1467,12 +1475,14 @@ class ASControl(object):
 
     def update_vlines(self):
         self.prsnt.update_vlines()
+        self.reset_original_plot()
 
     # close apogee spectrovision
     def shutdown_application(self):
         self.prsnt.frame.Close()
 
     def stop_all_threads(self, shutdown=False):
+        self.prsnt.color_map.Enable()
         self.prsnt.current_process("")
         self.start_thread.clear()
         self.stop_thread.set()
@@ -1483,6 +1493,7 @@ class ASControl(object):
                 sleep(0.1)
 
     def pause_all_threads(self):
+        self.prsnt.color_map.Enable()
         self.prsnt.current_process("Paused...")
         self.pause_thread.set()
 
@@ -1598,6 +1609,7 @@ class ASControl(object):
         del(self.old_name)
 
     def update_red_farred(self):
+        from constants import RED_FARRED
         new_ranges = self.prsnt.get_red_farred(RED_FARRED)
         if new_ranges is not None:
             RED_FARRED = new_ranges

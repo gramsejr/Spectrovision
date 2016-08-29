@@ -44,8 +44,8 @@ def wavelength_to_rgb(gamma=1.0):
             G = 0.0
             B = 0.0
         elif wavelength >= 370 and wavelength <= 460:
-            attenuation = (wavelength - 340) / (460 - 340)
-            R = ((-(wavelength - 460) / (460 - 340)) * attenuation) ** gamma
+            attenuation = (wavelength - 370) / (460 - 370)
+            R = ((-(wavelength - 460) / (460 - 370)) * attenuation) ** gamma
             G = 0.0
             B = (1.0 * attenuation) ** gamma
         elif wavelength >= 460 and wavelength <= 500:
@@ -136,7 +136,7 @@ class GraphPanel(wx.Panel):
             self.axes.vlines(self.integ_lines, new_axis_limits[0],
                              new_axis_limits[1], colors='r')
             self.axes.vlines(self.fractional_lines, new_axis_limits[0],
-                             new_axis_limits[1], colors='b')
+                             new_axis_limits[1], colors='black')
 
     @property
     def x_label(self):
@@ -173,11 +173,16 @@ class GraphPanel(wx.Panel):
         value text and x value along x axis. right click to remove box"""
         if not event.xdata:
             return
+        # clear revious text boxes
         while self.axes.texts:
             for text in self.axes.texts:
                 text.remove()
+        # if it was right click or middle click, just leave text boxes removed
         if event.button is not 1:
+            for line in self.axes.get_lines():
+                line.set_markevery([])
             if self.text:
+                # leave integration data on plot
                 if self.integ_lines:
                     self.axes.text(0.01, 0.99, self.text.get_text(),
                                    size='x-large',
@@ -189,25 +194,34 @@ class GraphPanel(wx.Panel):
         x = round(event.xdata)
         text_lists = []
         ymin, ymax = self.axes.get_ylim()
+        xmin, xmax = self.axes.get_xlim()
+        # spacer is 3% of window size
         spacer = (ymax - ymin) * 0.03
+        xspacer = (xmax - xmin) * 0.005
         try:
             for line in self.axes.get_lines():
                 try:
+                    # make sure line has data where mouse was clicked
                     index = list(line.get_xdata()).index(x)
                 except ValueError:
                     continue
+                # if label starts with '_' we don't display it. this is what lets
+                # us show and hide the average line and label
                 if line.get_label().startswith('_'):
                     continue
+                # get y coordinate corresponding to the x value
                 y = list(line.get_ydata())[index]
                 while(abs(y) - spacer < 0):
                     if y >= 0:
                         y += spacer/5
                     else:
                         y -= spacer/5
-                text = line.get_label() + ': %.2f'
-                text = text % y
+                text = line.get_label() + ': (%s, %.2f)'
+                text = text % (int(x), y)
                 color = line.get_color()
                 text_lists.append([x, y, text, color])
+                line.set_marker('o')
+                line.set_markevery([index])
             text_lists.sort(key=lambda x: x[1])
             for i in range(len(text_lists) - 1):
                 if text_lists[i][1] > text_lists[i+1][1]:
@@ -215,10 +229,9 @@ class GraphPanel(wx.Panel):
                 while(abs(text_lists[i][1] - text_lists[i+1][1]) < spacer):
                     text_lists[i+1][1] += spacer/5
             for t in text_lists:
-                self.axes.text(t[0], t[1] , t[2],
+                self.axes.text(t[0] + xspacer, t[1] + spacer, t[2],
                                bbox={'facecolor': t[3],
                                      'alpha': 0.25, 'pad': 5})
-                self.axes.text(t[0], 0, unicode(t[0]))
             if self.text:
                 if self.integ_lines:
                     self.axes.text(0.01, 0.99, self.text.get_text(),
@@ -279,6 +292,7 @@ class GraphPanel(wx.Panel):
         try:
             self.axes.lines = [self.axes.lines[0]]
             line = self.axes.lines[0]
+            line.set_markevery([])
         except Exception:
             line, = self.axes.plot(self.x_data, y_data[:len(self.x_data)])
         else:
@@ -352,7 +366,7 @@ class GraphPanel(wx.Panel):
         for data in scan_data:
             try:
                 if self.integ_lines:
-                    if active_device in data['labels'][0]:
+                    if active_device in data['labels'][0] or active_device == 'None':
                         self.show_irradiance_data(data['y_data'][0],
                                                   auto_scale)
             except Exception:
@@ -407,16 +421,18 @@ class GraphPanel(wx.Panel):
                 self.apply_text("LUX: %.4f" % total)
             elif self.plot_unit == FOOTCANDLE:
                 self.apply_text("Footcandle: %.4f" % total)
+        ma = max(y_data[:-20])
+        mi = min(y_data[:-20])
+        if ma == mi:
+            mi -= 0.001
+            ma += 0.001
+        mi *= 1.05
+        ma *= 1.05
         if auto_scale:
-            ma = max(y_data[:-20])
-            mi = min(y_data[:-20])
-            if ma == mi:
-                mi -= 0.001
-                ma += 0.001
-            self.y_axis_limits = (mi * 1.05, ma * 1.05)
-        if self.plot_mode != ILLUMINANCE:
-            self.axes.vlines(self.integ_lines, 1, 1, colors='r')
-            self.axes.vlines(self.fractional_lines, 1, 1, colors='b')
+                self.y_axis_limits = (mi , ma)
+        elif self.plot_mode != ILLUMINANCE:
+            self.axes.vlines(self.integ_lines, mi, ma, colors='r')
+            self.axes.vlines(self.fractional_lines, mi, ma, colors='black')
 
     def add_rainbow(self, y_data):
         i = 0
@@ -445,6 +461,15 @@ class GraphPanel(wx.Panel):
                 line.set_visible(True)
                 line.set_label('Average')
         self.axes.texts = []
+        if self.text:
+            if self.integ_lines:
+                self.axes.text(0.01, 0.99, self.text.get_text(),
+                               size='x-large',
+                               verticalalignment='top',
+                               horizontalalignment='left',
+                               transform=self.axes.transAxes)
+            else:
+                self.text = None
         self.axes.legend(loc=1)
         self.canvas.draw()
 

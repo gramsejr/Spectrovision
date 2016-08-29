@@ -33,7 +33,8 @@ def dead_object_catcher(func):
             ret = func(*args, **kwargs)
         except wx.PyDeadObjectError:
             pass
-        return ret
+        else:
+            return ret
     return func_wrapper
 
 class ASPresentation(object):
@@ -343,7 +344,7 @@ class ASPresentation(object):
         self.auto_scale_toggle = wx.ToggleButton(self.left_panel, -1,
                                                  "Auto Scale", size=(120, -1))
         self.auto_scale_toggle.SetValue(True)
-        self.color_map_toggle = wx.ToggleButton(
+        self.color_map = wx.ToggleButton(
             self.left_panel, -1, "Map Color Range", size=(120, -1))
         self.reset_button = wx.Button(self.left_panel, -1, label="Reset Plot",
                                       size=(120, -1))
@@ -430,7 +431,7 @@ class ASPresentation(object):
         self.vertical_sizer.Add(
             self.auto_scale_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 1)
         self.vertical_sizer.Add(
-            self.color_map_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+            self.color_map, 0, wx.ALIGN_CENTER | wx.ALL, 1)
         self.vertical_sizer.Add(self.reset_button, 0,
                                 wx.ALIGN_CENTER | wx.ALL, 1)
         self.vertical_sizer.Add(
@@ -1010,7 +1011,7 @@ class ASPresentation(object):
         single and multi-sensor/multi-line plot settings."""
         self.enable_derivative(single_plot)
         self.show_average_button.Enable(not single_plot)
-        self.color_map_toggle.Enable(single_plot)
+        self.color_map.Enable(single_plot)
 
     def plot_signal(self, new_y, label=''):
         """sets plot settings to single line, updates plot mode and unit,
@@ -1020,7 +1021,7 @@ class ASPresentation(object):
         self.graph_panel.plot_unit = self.active_unit
         self.graph_panel.plot_mode = self.active_mode
         auto_scale = self.auto_scale_toggle.GetValue()
-        color_map = self.color_map_toggle.GetValue()
+        color_map = self.color_map.GetValue() and self.color_map.IsEnabled()
         x_lim, y_lim = self.graph_panel.plot_signal(
             new_y, auto_scale, color_map, label)
         if auto_scale:
@@ -1082,7 +1083,8 @@ class ASPresentation(object):
             self.x_axis_limits = (x_data_range[0], x_data_range[1])
             x_lim, y_lim = self.graph_panel.plot_signal(
                 y_data[0], self.auto_scale_toggle.GetValue(),
-                self.color_map_toggle.GetValue(), label='Scan 1')
+                self.color_map.GetValue() and self.color_map.IsEnabled(),
+                label=str(self.active_device))
         else:
             self.set_plot_settings(single_plot=False)
             x_min = 1100
@@ -1184,7 +1186,7 @@ class ASPresentation(object):
                                         self.integ_max.GetValue()]
         self.graph_panel.fractional_lines = [self.fraction_min.GetValue(),
                                              self.fraction_max.GetValue()]
-        self.draw()
+        self.graph_panel.axes.collections = []
 
     def draw(self):
         """tells the graph to redraw itself"""

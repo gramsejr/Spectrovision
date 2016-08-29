@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 
 import wx
 
-VERSION = '1.01.002'
+VERSION = '1.02.000'
 
 IS_GTK = 'wxGTK' in wx.PlatformInfo
 IS_WIN = 'wxMSW' in wx.PlatformInfo
