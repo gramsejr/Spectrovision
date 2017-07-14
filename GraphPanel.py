@@ -4,13 +4,13 @@ import wx
 import wx.lib.newevent
 import matplotlib
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg, \
-     NavigationToolbar2Wx
+     NavigationToolbar2WxAgg
 from matplotlib.figure import Figure
 from matplotlib.widgets import Cursor
 
 from constants import IS_MAC, LUX, FOOTCANDLE, RQE, SIGMA_R, SIGMA_FR, \
      CIE_1931, LUX_TO_FOOTCANDLES, PHOTON_FLUX, LUX_MULTIPLIER, ENERGY_FLUX, \
-     ILLUMINANCE, X_LABEL, RED_FARRED
+     ILLUMINANCE, X_LABEL
 
 matplotlib.rcParams['mathtext.default'] = 'regular'
 
@@ -19,7 +19,7 @@ custom_event, CUSTOM_EVT = wx.lib.newevent.NewEvent()
 def add_toolbar(sizer, canvas):
     """adds the pan and zoom tools (and a few others) to a toolbar at the
     base of the plot panel"""
-    toolbar = NavigationToolbar2Wx(canvas)
+    toolbar = NavigationToolbar2WxAgg(canvas)
     toolbar.Realize()
     tw, th = toolbar.GetSizeTuple()
     fw, fh = canvas.GetSizeTuple()
@@ -89,7 +89,7 @@ def wavelength_to_rgb(gamma=1.0):
 COLOR_MAP = wavelength_to_rgb()
 
 class GraphPanel(wx.Panel):
-    def __init__(self, parent):
+    def __init__(self, parent, red_farred):
         super(GraphPanel, self).__init__(parent, -1)
         self.SetBackgroundColour((218,238,255))
         self.SetWindowStyle(wx.RAISED_BORDER)
@@ -116,6 +116,7 @@ class GraphPanel(wx.Panel):
         self.plot_mode = -1
         self.text = None
         self.x_label = X_LABEL
+        self.red_farred = red_farred
 
     @property
     def x_axis_limits(self):
@@ -167,6 +168,17 @@ class GraphPanel(wx.Panel):
             wx.PostEvent(self.Parent.Parent, evt)
         except Exception:
             pass
+
+    def get_selected_wavelength(self, active_device):
+        for line in self.axes.lines:
+            if line.get_label() == active_device.name:
+                try:
+                    index = line.get_markevery()[0]
+                except IndexError:
+                    #nothing selected
+                    return None
+                else:
+                    return line.get_xdata()[index]
 
     def on_press(self, event):
         """handles button click during non-calibration mode. display box with y

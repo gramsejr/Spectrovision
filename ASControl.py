@@ -7,6 +7,7 @@ import multiprocessing
 import os
 import sys
 import time
+import urllib2
 from Queue import Queue, Empty
 from tempfile import gettempdir
 from threading import Event, Thread
@@ -58,6 +59,7 @@ class ASControl(object):
         interaction.install(self, presentation)
         self.red_farred = ([635, 685], [710,760])
         self.active_mode = COUNTS
+        self.check_for_updates()
 
     @property
     def active_device(self):
@@ -319,6 +321,9 @@ class ASControl(object):
                 try:
                     wx.Yield()
                 except Exception:
+                    # this exception is a wx._core.PyAssertionError which for some
+                    # reason I can't explicitly catch so I'm using a catch all here.
+                    # this error is raised when wx.Yield is called recursively
                     pass
                 if (i) == total_scans:
                     break
@@ -947,7 +952,13 @@ class ASControl(object):
             PostEvent(self.prsnt.frame, evt)
             return
         busy.Destroy()
-        Yield()
+        try:
+            wx.Yield()
+        except Exception:
+            # this exception is a wx._core.PyAssertionError which for some
+            # reason I can't explicitly catch so I'm using a catch all here.
+            # this error is raised when wx.Yield is called recursively
+            pass
         del(busy)
         self.prsnt.clear_dark_ref.Enable()
         self.prsnt.confirmation_message("Dark Reference Saved", "Success!")
@@ -1188,7 +1199,33 @@ class ASControl(object):
                 return
         self.prsnt.set_calibration_mode(len(self.devices),
                                         self.light_reference_cal,
+                                        self.set_hot_pixel,
                                         self.device_reference_cal)
+
+    def set_hot_pixel(self, event):
+        if not self.abstr.connected:
+            self.connect_to_device()
+            if not self.abstr.connected:
+                return
+        device = self.active_device
+        if not device:
+            return
+        wavelength = self.prsnt.get_hot_wavelength(device)
+        if wavelength is not None:
+            success = device.add_hot_pixel_at_wavelength(wavelength)
+            if not success:
+                add_one = self.prsnt.ok_cancel("Hot Pixel Error",
+                                      "This pixel has already been added to " \
+                                      " the dead pixel array.\nAdd one to " \
+                                      "the pixel index?")
+                if add_one:
+                    success = device.add_hot_pixel_at_wavelength(wavelength, add_one)
+                    if not success:
+                        self.prsnt.give_error("Hot Pixel Error",
+                                              "This ones been added already too.")
+        else:
+            self.prsnt.give_error("Hot Pixel Error",
+                                  "Make sure your bad wavelength is selected first.")
 
     def light_reference_cal(self, event):
         """gives user instruction on how to take calibration scan, takes the
@@ -1372,7 +1409,13 @@ class ASControl(object):
                     return
         self.prsnt.current_process("Plotting Snapshot")
         busy = self.prsnt.busy("Taking a measurement...")
-        wx.Yield()
+        try:
+            wx.Yield()
+        except Exception:
+            # this exception is a wx._core.PyAssertionError which for some
+            # reason I can't explicitly catch so I'm using a catch all here.
+            # this error is raised when wx.Yield is called recursively
+            pass
         for dev in self.devices:
             if dev.change_units.is_set():
                 if self.prsnt.active_mode in [ENERGY_FLUX, ILLUMINANCE]:
@@ -1386,6 +1429,9 @@ class ASControl(object):
                 elif self.prsnt.active_mode == PHOTON_FLUX:
                     dev.irrad_unit = MICRO_MOLES
                     self.prsnt.label = MICROMOL_LABEL
+                elif self.prsnt.active_mode == RT:
+                    dev.irrad_unit = COUNTS
+                    self.prsnt.label = r'Reflectance/Transmittance [$\%$]'
                 else:
                     dev.irrad_unit = COUNTS
                     self.prsnt.label = r'Counts'
@@ -1592,7 +1638,13 @@ class ASControl(object):
             dev.reset_spec()
             self.disconnect(dev)
             del(busy)
-            wx.Yield()
+            try:
+                wx.Yield()
+            except Exception:
+                # this exception is a wx._core.PyAssertionError which for some
+                # reason I can't explicitly catch so I'm using a catch all here.
+                # this error is raised when wx.Yield is called recursively
+                pass
             self.prsnt.confirmation_message("Device has been reset.",
                                             "Success!")
             self.connect_to_device()
@@ -1605,14 +1657,44 @@ class ASControl(object):
                 return
             else:
                 dev.set_device_serial(serial)
+        elif choice == 6:
+            dev = [dev for dev in self.devices if dev.name == self.old_name][0]
+            dev.reset_default_settings()
+        elif choice == 7:
+            dev = [dev for dev in self.devices if dev.name == self.old_name][0]
+            dev.change_rs232_baudrate(115200)
         self.old_name = None
         del(self.old_name)
 
     def update_red_farred(self):
-        from constants import RED_FARRED
-        new_ranges = self.prsnt.get_red_farred(RED_FARRED)
+        new_ranges = self.prsnt.get_red_farred(self.abstr.red_farred)
         if new_ranges is not None:
-            RED_FARRED = new_ranges
+            self.abstr.red_farred = str(new_ranges)
+            self.prsnt.update_red_farred(new_ranges)
+
+    def check_for_updates(self):
+        return # don't know if mesa user's would want this or not
+        request = urllib2.Request("http://www.apogeeinstruments.com/downloads/")
+        response = None
+        try:
+            response = urllib2.urlopen(request)
+        except (Exception, urllib2.URLError), data:
+            print data
+            # maybe we're international?
+            try:
+                request = urllib2.Request("http://www.apogeeinstruments.co.uk/downloads")
+                response = urllib2.urlopen(request)
+            except (Exception, urllib2.URLError), data:
+                print data
+                return
+        if response is not None:
+            try:
+                page_data = response.read()
+                version = page_data.split('ApogeeSpectrovision PC v ')[1][:8]
+                if version > VERSION:
+                    self.prsnt.present_update_message(request.get_full_url())
+            except Exception, data:
+                print data
 
     def update_spin_ctrls(self, widget):
         self.prsnt.number_pad(widget)

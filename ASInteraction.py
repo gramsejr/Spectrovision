@@ -137,18 +137,6 @@ class ASInteraction(object):
         presentation.frame.Bind(wx.EVT_TOGGLEBUTTON, self.on_show_average,
                                 presentation.show_average_button)
 
-        presentation.integration_time.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.number_of_scans_to_avg.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.integ_min.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.integ_max.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.fraction_min.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.fraction_max.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.y_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.y_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.x_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-        presentation.x_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
-
-
         self.axis_controls = [presentation.y_axis_min, presentation.y_axis_max,
                               presentation.x_axis_min, presentation.x_axis_max]
 
@@ -186,6 +174,20 @@ class ASInteraction(object):
         presentation.frame.Bind(wx.EVT_MENU, self.on_open_file, id=wx.ID_OPEN)
         # capture close so we can shutdown non daemon threads on exit
         presentation.frame.Bind(wx.EVT_CLOSE, self.on_close)
+
+        # These are MESA 2 specific
+        presentation.integration_time.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.number_of_scans_to_avg.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.integ_min.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.integ_max.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.fraction_min.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.fraction_max.Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.y_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.y_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.x_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+        presentation.x_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.on_spin_ctrl_focus)
+
+
     # these methods catch the interrupts sent from the presentations controls
     # and direct them to methods in ASControl.py
 
@@ -329,5 +331,6 @@ class ASInteraction(object):
     def on_swtich_to_calibrate_mode(self, event):
         self.control.set_calibrate_mode()
 
+    # this is MESA 2 specific
     def on_spin_ctrl_focus(self, event):
         self.control.update_spin_ctrls(event.GetEventObject())

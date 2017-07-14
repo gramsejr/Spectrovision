@@ -3,12 +3,15 @@ from __future__ import unicode_literals
 
 from INI_Configuration import INIMixin
 
+from ast import literal_eval
+
 
 class ASAbstraction(INIMixin):
     def __init__(self):
         ini_defaults = {'device_alias': '',
                         'current_directory': '',
-                        'current_file': ''}
+                        'current_file': '',
+                        'red_farred': "[[635, 685], [710, 760]]"}
         super(ASAbstraction, self).__init__(ini_defaults=ini_defaults)
         self.x_data_range = [340, 820]
         self.y_data = []
@@ -46,3 +49,13 @@ class ASAbstraction(INIMixin):
     @current_file.setter
     def current_file(self, new_file):
         self.ini.current_file = new_file
+
+    @property
+    def red_farred(self):
+        # convert string representation of nested list into
+        # an actual nested list
+        return literal_eval(self.ini.red_farred)
+
+    @red_farred.setter
+    def red_farred(self, new_ranges):
+        self.ini.red_farred = new_ranges

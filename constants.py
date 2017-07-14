@@ -3,7 +3,7 @@ from __future__ import unicode_literals
 
 import wx
 
-VERSION = '1.02.000'
+VERSION = '1.02.005'
 
 IS_GTK = 'wxGTK' in wx.PlatformInfo
 IS_WIN = 'wxMSW' in wx.PlatformInfo
@@ -17,8 +17,6 @@ PHOTON_FLUX = 3
 ILLUMINANCE = 4
 
 SERVICED = False
-
-RED_FARRED = ([635, 685], [710,760])
 
 MODE_TO_UNITS = ['Relative', 'Relative', 'Watts', 'umols', '%s']
 UNITS_TO_STR = ['Lux', 'Footcandle']

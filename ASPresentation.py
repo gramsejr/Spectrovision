@@ -38,435 +38,14 @@ def dead_object_catcher(func):
     return func_wrapper
 
 class ASPresentation(object):
-    def __init__(self):
+    def __init__(self, red_farred):
         """the ASPresentation class contains all the display components of the 
         application and handles all the calls to the gui, some of which
         are rerouted to the GraphPanel class in GraphPanel.py"""
-        title = 'Apogee SpectroVision - Version %s' % VERSION
-        self.frame = wx.Frame(None, -1, title=title, size=(1280, 800))
-        self.frame.SetBackgroundColour("white")
         self.sensors = []
         self.calibrate_mode = False
-        # set the application icon
-        if IS_MAC:
-            img_src = resource_path('image_source/%s')
-            icon = wx.Icon(img_src % 'apogee-icon-256.png',
-                           wx.BITMAP_TYPE_PNG)
-            tb_icon = wx.TaskBarIcon(iconType=wx.TBI_DOCK)
-            tb_icon.SetIcon(icon, "Apogee Spectrovision")
-        elif IS_WIN:
-            img_src = 'image_source\\%s'
-            icon = wx.Icon(img_src % "apogee-icon-256.png")
-        elif IS_GTK:
-            img_src = 'image_source/%s'
-            icon = wx.Icon(img_src % 'apogee-icon-256.png',
-                           wx.BITMAP_TYPE_PNG)
-        self.frame.SetIcon(icon)
-
-        # split frame into 3 parts: top, left, and graph windows
-        self.vertical_splitter = wx.SplitterWindow(self.frame, -1)
-        self.vertical_splitter.SetBackgroundColour("white")
-        self.vertical_splitter.SetWindowStyle(wx.RAISED_BORDER)
-        self.horizontal_splitter = wx.SplitterWindow(self.vertical_splitter, -1)
-        self.bottom_left_panel = wx.Panel(self.horizontal_splitter, -1)
-        self.bottom_left_panel.SetBackgroundColour("white")
-        self.bottom_left_panel.SetWindowStyle(wx.RAISED_BORDER)
-        self.bottom_left_panel.SetMaxSize((250, 75))
-        self.left_panel = ScrolledPanel(self.horizontal_splitter, -1)
-        self.left_panel.SetBackgroundColour((218,238,255))
-        self.left_panel.SetWindowStyle(wx.RAISED_BORDER)
-        self.left_panel.scroller = DragScroller(self.left_panel)
-        self.left_panel.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
-        self.left_panel.Bind(wx.EVT_LEFT_UP, self.on_left_up)
-        self.graph_panel = GraphPanel(self.vertical_splitter)
-        self.horizontal_splitter.SetMinimumPaneSize(60)
-        self.horizontal_splitter.SplitHorizontally(self.left_panel, self.bottom_left_panel, -60)
-        self.horizontal_splitter.SetSashInvisible()
-        self.vertical_splitter.SetMinimumPaneSize(25)
-        self.vertical_splitter.SplitVertically(self.horizontal_splitter,
-                                               self.graph_panel, 175)
-        self.vertical_splitter.SetSashInvisible()
-
-        apogee_logo = wx.StaticBitmap(
-            self.bottom_left_panel, -1, wx.Bitmap(img_src % "ApogeeLogo.png"),
-            size=(150, -1))
-        sizer = wx.BoxSizer()
-        sizer.Add(apogee_logo, 0, wx.ALIGN_CENTER | wx.ALL, 0)
-        self.bottom_left_panel.SetSizer(sizer)
-
-        # set up menu bar
-        menu_bar = wx.MenuBar()
-        self.file_menu = wx.Menu()
-        self.file_menu.Append(100, "&Data Capture", "Setup a data capture scheme")
-        self.file_menu.Append(101, "&Connect", "Connect to a device")
-        self.file_menu.Append(102, "D&isconnect", "Disconnect a device")
-        self.file_menu.Append(103, "&Red/Far Red Setup")
-        self.file_menu.Enable(102, False)
-        self.file_menu.AppendSeparator()
-        self.file_menu.Append(wx.ID_EXIT, "&Exit")
-        menu_bar.Append(self.file_menu, "&File")
-
-        view_menu = wx.Menu()
-        view_menu.Append(200, "&Raw Signal", "Plot relative data")
-        view_menu.Append(201, "Reflectance/&Transmittance",
-                         "Plot reflectance/transmittance")
-        view_menu.Append(203, "&Energy Flux Density",
-                         "Plot in calibrated unit %s" % WX_WM2_LABEL)
-        view_menu.Append(202, "&Photon Flux Density",
-                         "Plot in calibrated unit %s" % WX_MICROMOL_LABEL)
-        submenu = wx.Menu()
-        submenu.Append(204, "&Lux",
-                       "Plot in calibrated unit Lux: %s" % WX_LUX_LABEL)
-        submenu.Append(205, "&Footcandle",
-                       "Plot in calibrated unit Footcandle: %s" % WX_FC_LABEL)
-        view_menu.AppendMenu(211, "&Illuminance", submenu)
-        menu_bar.Append(view_menu, "&View")
-
-        help_menu = wx.Menu()
-        help_menu.Append(300, "&Left Panel", "Get help with Left Panel controls")
-        help_menu.Append(301, "&MenuBar", "Get help with MenuBar options")
-        help_menu.Append(302, "&Toolbar", "Get help with ToolBar controls")
-        help_menu.Append(303, "&Plot Area", "Get help with plot area controls")
-        help_menu.AppendSeparator()
-        help_menu.Append(304, "&About Apogee SpectroVision",
-                         "Learn about Apogee SpectroVision")
-        menu_bar.Append(help_menu, "&Help")
-        menu_bar.SetBackgroundColour("white")
-
-        self.frame.SetMenuBar(menu_bar)
-
-        # create a status bar.
-        self.status_bar = wx.StatusBar(self.frame)
-        self.status_bar.SetFieldsCount(4)
-        self.status_bar.SetStatusWidths([-2, -1, -1, -1])
-        self.frame.SetStatusBar(self.status_bar)
-        self.status_bar.Font = wx.Font(14, wx.FONTFAMILY_DEFAULT,
-                                       wx.FONTSTYLE_NORMAL,
-                                       wx.FONTWEIGHT_NORMAL)
-        self.status_bar.SetBackgroundColour("white")
-
-        self.tool_bar = wx.ToolBar(self.frame)
-        self.tool_bar.SetToolBitmapSize((35,35))
-        self.tool_bar.SetBackgroundColour("white")
-        self.frame.SetToolBar(self.tool_bar)
-        
-        # crete controls for top frame
-        # create bitmap buttons with tooltip ballons
-        self.dark_reference = wx.BitmapButton(
-            self.tool_bar, -1,
-            bitmap=wx.Bitmap(img_src % 'dark_ref.jpg'))
-        tool_tip = wx.ToolTip("Set dark reference")
-        self.dark_reference.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.dark_reference)
-
-        self.light_reference = wx.BitmapButton(
-            self.tool_bar, -1,
-            bitmap=wx.Bitmap(img_src % 'light_ref.jpg'))
-        tool_tip = wx.ToolTip("Set light reference")
-        self.light_reference.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.light_reference)
-
-        self.clear_dark_ref = wx.BitmapButton(
-            self.tool_bar, -1, 
-            bitmap=wx.Bitmap(img_src % 'clear_dark_ref.jpg'))
-        tool_tip = wx.ToolTip("Clear the current dark reference")
-        self.clear_dark_ref.SetToolTip(tool_tip)
-        self.clear_dark_ref.Disable()
-        self.tool_bar.AddControl(self.clear_dark_ref)
-
-        self.open_file = wx.BitmapButton(
-            self.tool_bar, -1,
-            bitmap=wx.Bitmap(img_src % 'open_icon.jpg'))
-        tool_tip = wx.ToolTip("Open a data file for plotting\n (Ctrl + o)")
-        self.open_file.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.open_file)
-
-        self.save_spectrum = wx.BitmapButton(
-            self.tool_bar, -1,
-            bitmap=wx.Bitmap(img_src % 'save_icon.jpg'))
-        tool_tip = wx.ToolTip("Save graph as image\n (Ctrl + s)")
-        self.save_spectrum.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.save_spectrum)
-
-        self.save_data = wx.BitmapButton(
-            self.tool_bar, -1,
-            bitmap=wx.Bitmap(img_src % 'save_data_icon.jpg'))
-        tool_tip = wx.ToolTip("Save graph data\n (Ctrl + d)")
-        self.save_data.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.save_data)
-
-        self.save_both = wx.BitmapButton(
-            self.tool_bar, -1,
-            bitmap=wx.Bitmap(img_src % 'purp_save_icon.jpg'))
-        tool_tip = wx.ToolTip("Save graph data and image\n (Ctrl + a)")
-        self.save_both.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.save_both)
-
-        self.copy_graph_image = wx.BitmapButton(
-            self.tool_bar, -1,
-            bitmap=wx.Bitmap(img_src % 'copy_graph_icon.jpg'))
-        tool_tip = wx.ToolTip("Copy graph to clipboard\n (Ctrl + c)")
-        self.copy_graph_image.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.copy_graph_image)
-
-        self.first_derivative = wx.BitmapButton(
-            self.tool_bar, -1,
-            wx.Bitmap(img_src % 'first_derivative.jpg'))
-        tool_tip = wx.ToolTip("Plot the first derivative")
-        self.first_derivative.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.first_derivative)
-
-        self.second_derivative = wx.BitmapButton(
-            self.tool_bar, -1,
-            wx.Bitmap(img_src % 'second_derivative.jpg'))
-        tool_tip = wx.ToolTip("Plot the second derivative")
-        self.second_derivative.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.second_derivative)
-
-        self.snap_shot = wx.BitmapButton(
-            self.tool_bar, -1, 
-            wx.Bitmap(img_src % 'camera.jpg'))
-        tool_tip = wx.ToolTip("Take a single measurement\n (F1)")
-        self.snap_shot.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.snap_shot)
-
-        self.play_button = wx.BitmapButton(
-            self.tool_bar, -1,
-            wx.Bitmap(img_src % 'play.jpg'))
-        tool_tip = wx.ToolTip("Start continuous measurements\n (F2)")
-        self.play_button.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.play_button)
-
-        self.pause_button = wx.BitmapButton(
-            self.tool_bar, -1,
-            wx.Bitmap(img_src % 'pause.jpg'))
-        tool_tip = wx.ToolTip("Pause continuous measurements\n (F3)")
-        self.pause_button.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.pause_button)
-
-        self.stop_button = wx.BitmapButton(
-            self.tool_bar, -1,
-            wx.Bitmap(img_src % 'stop.jpg'))
-        tool_tip = wx.ToolTip("Stop continuous measurements\n (F4)")
-        self.stop_button.SetToolTip(tool_tip)
-        self.tool_bar.AddControl(self.stop_button)
-        self.tool_bar.AddSeparator()
-        self.tool_bar.Realize()
-
-        # create controls for left panel
-        # integration time controls
-        integration_time_label = wx.StaticText(self.left_panel, -1,
-                                               "Integration Time (ms)")
-        self.integration_time = wx.SpinCtrl(
-            self.left_panel, value='2000', min=5, max=10000, size=(120, -1),
-            style=wx.TE_PROCESS_ENTER | wx.ALIGN_RIGHT)
-        self.integration_time.Disable()
-        self.auto_integration = wx.ToggleButton(
-            self.left_panel, -1, "Auto-Integration", size=(120, 30))
-        self.auto_integration.SetValue(True)
-        number_of_scans_label = wx.StaticText(self.left_panel, -1,
-                                              "Scans to Average")
-
-        # average number of scans controls
-        self.number_of_scans_to_avg = wx.SpinCtrl(
-            self.left_panel, value='1', min=1, max=100, size=(120, -1))
-
-        # graph mode and unit controls
-        self.relative = wx.RadioButton(
-            self.left_panel, label="Relative", style=wx.RB_GROUP)
-        self.relative.SetValue(True)
-        self.r_t = wx.RadioButton(
-            self.left_panel, label="Refl./Trans.")
-
-        self.energy_flux = wx.RadioButton(
-            self.left_panel, label="Energy Flux Density")
-
-        self.photon_flux = wx.RadioButton(
-            self.left_panel, label="Photon Flux Density")
-
-        self.illuminance = wx.RadioButton(self.left_panel, label="Illuminance")
-        self.lux = wx.RadioButton(
-            self.left_panel, label="Lux", style=wx.RB_GROUP)
-        self.footcandle = wx.RadioButton(
-            self.left_panel, label="Footcandle")
-
-        # integration range spin controls
-        integ_range = wx.StaticText(self.left_panel, -1, "Integration Range")
-        self.integ_min = wx.SpinCtrl(self.left_panel, value="340", min=340,
-                                     max=819, size=(60, -1),
-                                     style=wx.TE_PROCESS_ENTER)
-        self.integ_min.Disable()
-        self.integ_max = wx.SpinCtrl(self.left_panel, value="820", min=341,
-                                     max=820, size=(60, -1),
-                                     style=wx.TE_PROCESS_ENTER)
-        self.integ_max.Disable()
-
-        fraction_range = wx.StaticText(self.left_panel, -1, "Fractional Range")
-        self.fraction_min = wx.SpinCtrl(self.left_panel, value="340", min=340,
-                                        max=819, size=(60, -1),
-                                        style=wx.TE_PROCESS_ENTER)
-        self.fraction_min.Disable()
-        self.fraction_max = wx.SpinCtrl(self.left_panel, value="820", min=341,
-                                        max=820, size=(60, -1),
-                                        style=wx.TE_PROCESS_ENTER)
-        self.fraction_max.Disable()
-
-        # axes limits controls
-        y_axes = wx.StaticText(self.left_panel, -1, "Y Axes Limits")
-        self.y_axis_min = wx.SpinCtrlDouble(self.left_panel,  min=-16383,
-                                            max=16382, size=(60, -1), inc=0.01,
-                                            style=wx.TE_PROCESS_ENTER)
-        self.y_axis_max = wx.SpinCtrlDouble(self.left_panel, min=-16382,
-                                            max=16383, size=(60, -1), inc=0.01,
-                                            style=wx.TE_PROCESS_ENTER)
-        x_axes = wx.StaticText(self.left_panel, -1, "X Axes Limits")
-        self.x_axis_min = wx.SpinCtrlDouble(self.left_panel, min=300, inc=0.01,
-                                            max=1139, size=(60, -1),
-                                            style=wx.TE_PROCESS_ENTER)
-        self.x_axis_max = wx.SpinCtrlDouble(self.left_panel, min=301, inc=0.01,
-                                            max=1140, size=(60, -1),
-                                            style=wx.TE_PROCESS_ENTER)
-
-        self.integration_time.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.number_of_scans_to_avg.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.integ_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.integ_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.fraction_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.fraction_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.y_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.y_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.x_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
-        self.x_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
-
-
-        # toggle button plot options
-        self.set_auto_scale(en=False)
-        self.auto_scale_toggle = wx.ToggleButton(self.left_panel, -1,
-                                                 "Auto Scale", size=(120, -1))
-        self.auto_scale_toggle.SetValue(True)
-        self.color_map = wx.ToggleButton(
-            self.left_panel, -1, "Map Color Range", size=(120, -1))
-        self.reset_button = wx.Button(self.left_panel, -1, label="Reset Plot",
-                                      size=(120, -1))
-        self.show_average_button = wx.ToggleButton(
-            self.left_panel, -1, "Show Average", size=(120, -1))
-        self.show_average_button.Disable()
-
-
-        # all controls have been created. now its time to add them all to the 
-        # sizers in a nice layout
-        self.vertical_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.vertical_sizer.Add(integration_time_label, 0,
-                                wx.ALIGN_CENTER | wx.ALL)
-        self.vertical_sizer.Add(self.integration_time, 0,
-                                wx.ALIGN_CENTER | wx.ALL)
-        self.vertical_sizer.Add(self.auto_integration, 0,
-                                wx.ALIGN_CENTER | wx.ALL, 1)
-        divider = wx.StaticLine(self.left_panel, -1)
-        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
-
-        self.vertical_sizer.Add(number_of_scans_label, 0,
-                                wx.ALIGN_CENTER | wx.ALL)
-        self.vertical_sizer.Add(self.number_of_scans_to_avg, 0,
-                                wx.ALIGN_CENTER | wx.ALL)
-
-        divider = wx.StaticLine(self.left_panel, -1)
-        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
-
-        self.vertical_sizer.Add(self.relative, 0, wx.ALIGN_LEFT | wx.ALL, 2)
-        self.vertical_sizer.Add(self.r_t, 0, wx.ALIGN_LEFT | wx.ALL, 2)
-        self.vertical_sizer.Add(self.energy_flux, 0, wx.ALIGN_LEFT | wx.ALL, 2)
-        self.vertical_sizer.Add(self.photon_flux, 0, wx.ALIGN_LEFT | wx.ALL, 2)
-        self.vertical_sizer.Add(self.illuminance, 0, wx.ALIGN_LEFT | wx.ALL, 2)
-        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        h_sizer.AddSpacer(20)
-        h_sizer.Add(self.lux, 0, wx.ALIGN_LEFT | wx.ALL)
-        self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
-        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        h_sizer.AddSpacer(20)
-        h_sizer.Add(self.footcandle, 0, wx.ALIGN_LEFT | wx.ALL)
-        self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
-
-        self.vertical_sizer.Add(integ_range, 0, wx.ALIGN_CENTER | wx.ALL, 1)
-        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        horizontal_sizer.Add(
-            self.integ_min, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        horizontal_sizer.Add(
-            self.integ_max, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        self.vertical_sizer.Add(
-            horizontal_sizer, 0,  wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-
-        self.vertical_sizer.Add(fraction_range, 0, wx.ALIGN_CENTER | wx.ALL, 1)
-        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        horizontal_sizer.Add(
-            self.fraction_min, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        horizontal_sizer.Add(
-            self.fraction_max, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        self.vertical_sizer.Add(
-            horizontal_sizer, 0,  wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-
-        divider = wx.StaticLine(self.left_panel, -1)
-        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
-
-        self.vertical_sizer.Add(y_axes, 0,
-                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        horizontal_sizer.Add(self.y_axis_min, 0, wx.ALIGN_CENTER | wx.ALL)
-        horizontal_sizer.Add(self.y_axis_max, 0, wx.ALIGN_CENTER | wx.ALL)
-        self.vertical_sizer.Add(horizontal_sizer, 0,
-                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        self.vertical_sizer.AddSpacer(5)
-
-        self.vertical_sizer.Add(x_axes, 0,
-                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        horizontal_sizer.Add(self.x_axis_min, 0, wx.ALIGN_CENTER | wx.ALL)
-        horizontal_sizer.Add(self.x_axis_max, 0, wx.ALIGN_CENTER | wx.ALL)
-        self.vertical_sizer.Add(horizontal_sizer, 0,
-                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
-
-        divider = wx.StaticLine(self.left_panel, -1)
-        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
-
-        self.vertical_sizer.Add(
-            self.auto_scale_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 1)
-        self.vertical_sizer.Add(
-            self.color_map, 0, wx.ALIGN_CENTER | wx.ALL, 1)
-        self.vertical_sizer.Add(self.reset_button, 0,
-                                wx.ALIGN_CENTER | wx.ALL, 1)
-        self.vertical_sizer.Add(
-            self.show_average_button, 0, wx.ALIGN_CENTER | wx.ALL, 1)
-
-        # set the sizer of the left panel
-        self.left_panel.SetSizer(self.vertical_sizer)
-        self.left_panel.Bind(wx.EVT_SCROLL, self.left_panel.Sizer.Layout)
-
-        # i'm putting these binding here because I don't want to create a
-        # workaround from GraphPanel.py -> ASInteraction.py -> ASControl.py ->
-        # ASPresentation.py.
-        # All other bindings are found in ASInteraction.py
-        self.frame.Bind(CUSTOM_EVT, self.update_status_bar_coords)
-        self.frame.Bind(EVT_ERROR, self.give_event_error)
-        self.frame.Bind(PLOT_EVT, self.plot_event_data)
-        self.frame.Bind(STATUS_EVT, self.status_bar_event)
-        self.frame.Bind(TOOLBAR_EVT, self.enable_toolbar_controls)
-
-        self.set_presented_limits(self.graph_panel.x_axis_limits,
-                                  self.graph_panel.y_axis_limits)
-
-        # show and maximize frame
-        self.left_panel.SetupScrolling()
-        self.frame.Show()
-        self.frame.Maximize()
-
+        self.create_widgets(red_farred)
         self.enable_units()
-
-    def on_left_down(self, event):
-        self.left_panel.scroller.Start(event.GetPosition())
-
-    def on_left_up(self, event):
-        self.left_panel.scroller.Stop()
-
 
     @property
     @dead_object_catcher
@@ -1011,7 +590,8 @@ class ASPresentation(object):
         single and multi-sensor/multi-line plot settings."""
         self.enable_derivative(single_plot)
         self.show_average_button.Enable(not single_plot)
-        self.color_map.Enable(single_plot)
+        if not single_plot:
+            self.color_map.Disable()
 
     def plot_signal(self, new_y, label=''):
         """sets plot settings to single line, updates plot mode and unit,
@@ -1100,13 +680,11 @@ class ASPresentation(object):
         self.graph_panel.Refresh()
         self.frame.Refresh()
 
-    
     def enable_derivative(self, enable=True):
         """ enables and disables the derivative buttons. these are disabled for
         multiplot data"""
         self.first_derivative.Enable(enable)
         self.second_derivative.Enable(enable)
-
 
     def copy_plot_to_clipboard(self, directory):
         """copies the current plot image to the system clipboard.the image can
@@ -1130,7 +708,10 @@ class ASPresentation(object):
         such) to prevent user from clicking buttons when it's hazardous to do so"""
         return wx.BusyInfo(msg, self.frame)
 
-    def set_calibration_mode(self, number_of_sensors, light_ref_cal,
+    def get_hot_wavelength(self, active_device):
+        return self.graph_panel.get_selected_wavelength(active_device)
+
+    def set_calibration_mode(self, number_of_sensors, light_ref_cal, set_hot_pixel,
                              device_ref_cal):
         """this method adds or removes the calibration controls to/from the left
         panel. it is only activated using the ctrl-f10 hot key and should never
@@ -1143,6 +724,9 @@ class ASPresentation(object):
                 self.light_ref_cal = wx.Button(
                     self.left_panel, -1, label="Light Reference Calibration",
                     size=(160, 35))
+                self.set_hot_pixel = wx.Button(
+                    self.left_panel, -1, label="Add Selected to Hot Pixels",
+                    size=(160, 35))
                 self.device_ref_cal = wx.Button(
                     self.left_panel, -1, label="Device Reference Calibration",
                     size=(160, 35))
@@ -1152,20 +736,25 @@ class ASPresentation(object):
                                         wx.ALIGN_CENTER | wx.ALL, 8)
                 self.vertical_sizer.Add(self.light_ref_cal, 0,
                                         wx.ALIGN_CENTER | wx.ALL, 1)
+                self.vertical_sizer.Add(self.set_hot_pixel, 0,
+                                        wx.ALIGN_CENTER | wx.ALL, 1)
                 self.vertical_sizer.Add(self.device_ref_cal, 0,
                                         wx.ALIGN_CENTER | wx.ALL, 1)
                 self.frame.Bind(wx.EVT_BUTTON, light_ref_cal, self.light_ref_cal)
+                self.frame.Bind(wx.EVT_BUTTON, set_hot_pixel, self.set_hot_pixel)
                 self.frame.Bind(wx.EVT_BUTTON, device_ref_cal, self.device_ref_cal)
             else:
                 self.vertical_sizer.Show(30)
                 self.vertical_sizer.Show(31)
                 self.vertical_sizer.Show(32)
                 self.vertical_sizer.Show(33)
+                self.vertical_sizer.Show(34)
         else:
             self.vertical_sizer.Hide(30)
             self.vertical_sizer.Hide(31)
             self.vertical_sizer.Hide(32)
             self.vertical_sizer.Hide(33)
+            self.vertical_sizer.Hide(34)
         self.vertical_sizer.RecalcSizes()
         self.vertical_sizer.Layout()
         self.left_panel.SetSizer(self.vertical_sizer)
@@ -1227,12 +816,16 @@ class ASPresentation(object):
             menu.Append(3, "Unpair Sensors")
         if self.calibrate_mode:
             menu.Append(5, "Set Device Serial")
+            menu.Append(6, "Reset Defaults")
+            menu.Append(7, "Set 115200 Baud")
         self.frame.Bind(wx.EVT_MENU, handler, id=0)
         self.frame.Bind(wx.EVT_MENU, handler, id=1)
         self.frame.Bind(wx.EVT_MENU, handler, id=2)
         self.frame.Bind(wx.EVT_MENU, handler, id=3)
         self.frame.Bind(wx.EVT_MENU, handler, id=4)
         self.frame.Bind(wx.EVT_MENU, handler, id=5)
+        self.frame.Bind(wx.EVT_MENU, handler, id=6)
+        self.frame.Bind(wx.EVT_MENU, handler, id=7)
         self.frame.PopupMenu(menu)
         menu.Destroy()
 
@@ -1434,8 +1027,8 @@ class ASPresentation(object):
         dlg.SetSizer(sizer)
         dlg.Fit()
         if dlg.ShowModal() == wx.ID_OK:
-            return ([r_axis_min.GetValue(), r_axis_max.GetValue()],
-                    [fr_axis_min.GetValue(), fr_axis_max.GetValue()])
+            return [[r_axis_min.GetValue(), r_axis_max.GetValue()],
+                    [fr_axis_min.GetValue(), fr_axis_max.GetValue()]]
         return None
 
     def get_sensor_pair(self, selected, choices):
@@ -1479,6 +1072,478 @@ class ASPresentation(object):
                 sensor.SetBitmapLabel(wx.Bitmap(image_path))
                 sensor.Refresh()
         self.tool_bar.Refresh()
+
+    def update_red_farred(self, new_ranges):
+        self.graph_panel.red_farred = new_ranges
+
+    def present_update_message(self, url):
+        dlg = wx.Dialog(self.frame, -1, 'Update Available!', size=(325, 120))
+        dlg.SetBackgroundColour("white")
+        text = wx.StaticText(
+            dlg, -1, "There is a newer version of Apogee Spectrovision available.\n" \
+        "Click here to download the latest release: ")
+        link = wx.HyperlinkCtrl(dlg, -1, "", url)
+        ok = wx.Button(dlg, wx.ID_OK, "Maybe Later")
+        def open_link(event):
+            try:
+                import webbrowser
+                webbrowser.open(url)
+            except:
+                pass
+            dlg.EndModal(wx.ID_OK)
+        link.Bind(wx.EVT_HYPERLINK, open_link)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(text, 0, wx.ALIGN_LEFT | wx.ALL, 5)
+        sizer.Add(link, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer.Add(ok, 0, wx.ALIGN_RIGHT | wx.ALL, 5)
+        dlg.SetSizer(sizer)
+        dlg.Fit()
+        dlg.Center()
+        dlg.ShowModal()
+
+    def create_widgets(self, red_farred):
+        title = 'Apogee SpectroVision - Version %s' % VERSION
+        self.frame = wx.Frame(None, -1, title=title, size=(1280, 800))
+        self.frame.SetBackgroundColour("white")
+        if IS_MAC:
+            img_src = resource_path('image_source/%s')
+            icon = wx.Icon(img_src % 'apogee-icon-256.png',
+                           wx.BITMAP_TYPE_PNG)
+            tb_icon = wx.TaskBarIcon(iconType=wx.TBI_DOCK)
+            tb_icon.SetIcon(icon, "Apogee Spectrovision")
+        elif IS_WIN:
+            img_src = 'image_source\\%s'
+            icon = wx.Icon(img_src % "apogee-icon-256.png")
+        elif IS_GTK:
+            img_src = 'image_source/%s'
+            icon = wx.Icon(img_src % 'apogee-icon-256.png',
+                           wx.BITMAP_TYPE_PNG)
+        self.frame.SetIcon(icon)
+
+        # split frame into 3 parts: top, left, and graph windows
+        self.vertical_splitter = wx.SplitterWindow(self.frame, -1)
+        self.vertical_splitter.SetBackgroundColour("white")
+        self.vertical_splitter.SetWindowStyle(wx.RAISED_BORDER)
+        self.horizontal_splitter = wx.SplitterWindow(self.vertical_splitter, -1)
+        self.bottom_left_panel = wx.Panel(self.horizontal_splitter, -1)
+        self.bottom_left_panel.SetBackgroundColour("white")
+        self.bottom_left_panel.SetWindowStyle(wx.RAISED_BORDER)
+        self.bottom_left_panel.SetMaxSize((250, 75))
+        self.left_panel = ScrolledPanel(self.horizontal_splitter, -1)
+        self.left_panel.SetBackgroundColour((218,238,255))
+        self.left_panel.SetWindowStyle(wx.RAISED_BORDER)
+
+        # the next 3 lines are MESA 2 specific
+        self.left_panel.scroller = DragScroller(self.left_panel)
+        self.left_panel.Bind(wx.EVT_LEFT_DOWN, self.on_left_down)
+        self.left_panel.Bind(wx.EVT_LEFT_UP, self.on_left_up)
+
+        self.graph_panel = GraphPanel(self.vertical_splitter, red_farred)
+        self.horizontal_splitter.SetMinimumPaneSize(60)
+        self.horizontal_splitter.SplitHorizontally(self.left_panel, self.bottom_left_panel, -60)
+        self.horizontal_splitter.SetSashInvisible()
+        self.vertical_splitter.SetMinimumPaneSize(25)
+        self.vertical_splitter.SplitVertically(self.horizontal_splitter,
+                                               self.graph_panel, 175)
+        self.vertical_splitter.SetSashInvisible()
+
+        apogee_logo = wx.StaticBitmap(
+            self.bottom_left_panel, -1, wx.Bitmap(img_src % "ApogeeLogo.png"),
+            size=(150, -1))
+
+        # the next 3 lines are MESA 2 specific
+        sizer = wx.BoxSizer()
+        sizer.Add(apogee_logo, 0, wx.ALIGN_CENTER | wx.ALL, 0)
+        self.bottom_left_panel.SetSizer(sizer)
+
+        # set up menu bar
+        menu_bar = wx.MenuBar()
+        self.file_menu = wx.Menu()
+        self.file_menu.Append(100, "&Data Capture", "Setup a data capture scheme")
+        self.file_menu.Append(101, "&Connect", "Connect to a device")
+        self.file_menu.Append(102, "D&isconnect", "Disconnect a device")
+        self.file_menu.Append(103, "&Red/Far Red Setup")
+        self.file_menu.Enable(102, False)
+        self.file_menu.AppendSeparator()
+        self.file_menu.Append(wx.ID_EXIT, "&Exit")
+        menu_bar.Append(self.file_menu, "&File")
+
+        view_menu = wx.Menu()
+        view_menu.Append(200, "&Raw Signal", "Plot relative data")
+        view_menu.Append(201, "Reflectance/&Transmittance",
+                         "Plot reflectance/transmittance")
+        view_menu.Append(203, "&Energy Flux Density",
+                         "Plot in calibrated unit %s" % WX_WM2_LABEL)
+        view_menu.Append(202, "&Photon Flux Density",
+                         "Plot in calibrated unit %s" % WX_MICROMOL_LABEL)
+        submenu = wx.Menu()
+        submenu.Append(204, "&Lux",
+                       "Plot in calibrated unit Lux: %s" % WX_LUX_LABEL)
+        submenu.Append(205, "&Footcandle",
+                       "Plot in calibrated unit Footcandle: %s" % WX_FC_LABEL)
+        view_menu.AppendMenu(211, "&Illuminance", submenu)
+        menu_bar.Append(view_menu, "&View")
+
+        help_menu = wx.Menu()
+        help_menu.Append(300, "&Left Panel", "Get help with Left Panel controls")
+        help_menu.Append(301, "&MenuBar", "Get help with MenuBar options")
+        help_menu.Append(302, "&Toolbar", "Get help with ToolBar controls")
+        help_menu.Append(303, "&Plot Area", "Get help with plot area controls")
+        help_menu.AppendSeparator()
+        help_menu.Append(304, "&About Apogee SpectroVision",
+                         "Learn about Apogee SpectroVision")
+        menu_bar.Append(help_menu, "&Help")
+        menu_bar.SetBackgroundColour("white")
+
+        self.frame.SetMenuBar(menu_bar)
+
+        # create a status bar.
+        self.status_bar = wx.StatusBar(self.frame)
+        self.status_bar.SetFieldsCount(4)
+        self.status_bar.SetStatusWidths([-2, -1, -1, -1])
+        self.frame.SetStatusBar(self.status_bar)
+        self.status_bar.Font = wx.Font(14, wx.FONTFAMILY_DEFAULT,
+                                       wx.FONTSTYLE_NORMAL,
+                                       wx.FONTWEIGHT_NORMAL)
+        self.status_bar.SetBackgroundColour("white")
+
+        self.tool_bar = wx.ToolBar(self.frame)
+        self.tool_bar.SetToolBitmapSize((35,35))
+        self.tool_bar.SetBackgroundColour("white")
+        self.frame.SetToolBar(self.tool_bar)
+        
+        # crete controls for top frame
+        # create bitmap buttons with tooltip ballons
+        self.dark_reference = wx.BitmapButton(
+            self.tool_bar, -1,
+            bitmap=wx.Bitmap(img_src % 'dark_ref.jpg'))
+        tool_tip = wx.ToolTip("Set dark reference")
+        self.dark_reference.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.dark_reference)
+
+        self.light_reference = wx.BitmapButton(
+            self.tool_bar, -1,
+            bitmap=wx.Bitmap(img_src % 'light_ref.jpg'))
+        tool_tip = wx.ToolTip("Set light reference")
+        self.light_reference.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.light_reference)
+
+        self.clear_dark_ref = wx.BitmapButton(
+            self.tool_bar, -1, 
+            bitmap=wx.Bitmap(img_src % 'clear_dark_ref.jpg'))
+        tool_tip = wx.ToolTip("Clear the current dark reference")
+        self.clear_dark_ref.SetToolTip(tool_tip)
+        self.clear_dark_ref.Disable()
+        self.tool_bar.AddControl(self.clear_dark_ref)
+
+        self.open_file = wx.BitmapButton(
+            self.tool_bar, -1,
+            bitmap=wx.Bitmap(img_src % 'open_icon.jpg'))
+        tool_tip = wx.ToolTip("Open a data file for plotting\n (Ctrl + o)")
+        self.open_file.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.open_file)
+
+        self.save_spectrum = wx.BitmapButton(
+            self.tool_bar, -1,
+            bitmap=wx.Bitmap(img_src % 'save_icon.jpg'))
+        tool_tip = wx.ToolTip("Save graph as image\n (Ctrl + s)")
+        self.save_spectrum.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.save_spectrum)
+
+        self.save_data = wx.BitmapButton(
+            self.tool_bar, -1,
+            bitmap=wx.Bitmap(img_src % 'save_data_icon.jpg'))
+        tool_tip = wx.ToolTip("Save graph data\n (Ctrl + d)")
+        self.save_data.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.save_data)
+
+        self.save_both = wx.BitmapButton(
+            self.tool_bar, -1,
+            bitmap=wx.Bitmap(img_src % 'purp_save_icon.jpg'))
+        tool_tip = wx.ToolTip("Save graph data and image\n (Ctrl + a)")
+        self.save_both.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.save_both)
+
+        self.copy_graph_image = wx.BitmapButton(
+            self.tool_bar, -1,
+            bitmap=wx.Bitmap(img_src % 'copy_graph_icon.jpg'))
+        tool_tip = wx.ToolTip("Copy graph to clipboard\n (Ctrl + c)")
+        self.copy_graph_image.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.copy_graph_image)
+
+        self.first_derivative = wx.BitmapButton(
+            self.tool_bar, -1,
+            wx.Bitmap(img_src % 'first_derivative.jpg'))
+        tool_tip = wx.ToolTip("Plot the first derivative")
+        self.first_derivative.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.first_derivative)
+
+        self.second_derivative = wx.BitmapButton(
+            self.tool_bar, -1,
+            wx.Bitmap(img_src % 'second_derivative.jpg'))
+        tool_tip = wx.ToolTip("Plot the second derivative")
+        self.second_derivative.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.second_derivative)
+
+        self.snap_shot = wx.BitmapButton(
+            self.tool_bar, -1, 
+            wx.Bitmap(img_src % 'camera.jpg'))
+        tool_tip = wx.ToolTip("Take a single measurement\n (F1)")
+        self.snap_shot.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.snap_shot)
+
+        self.play_button = wx.BitmapButton(
+            self.tool_bar, -1,
+            wx.Bitmap(img_src % 'play.jpg'))
+        tool_tip = wx.ToolTip("Start continuous measurements\n (F2)")
+        self.play_button.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.play_button)
+
+        self.pause_button = wx.BitmapButton(
+            self.tool_bar, -1,
+            wx.Bitmap(img_src % 'pause.jpg'))
+        tool_tip = wx.ToolTip("Pause continuous measurements\n (F3)")
+        self.pause_button.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.pause_button)
+
+        self.stop_button = wx.BitmapButton(
+            self.tool_bar, -1,
+            wx.Bitmap(img_src % 'stop.jpg'))
+        tool_tip = wx.ToolTip("Stop continuous measurements\n (F4)")
+        self.stop_button.SetToolTip(tool_tip)
+        self.tool_bar.AddControl(self.stop_button)
+        self.tool_bar.AddSeparator()
+        self.tool_bar.Realize()
+
+        # create controls for left panel
+        # integration time controls
+        integration_time_label = wx.StaticText(self.left_panel, -1,
+                                               "Integration Time (ms)")
+        self.integration_time = wx.SpinCtrl(
+            self.left_panel, value='2000', min=5, max=10000, size=(120, -1),
+            style=wx.TE_PROCESS_ENTER | wx.ALIGN_RIGHT)
+        self.integration_time.Disable()
+        self.auto_integration = wx.ToggleButton(
+            self.left_panel, -1, "Auto-Integration", size=(120, 30))
+        self.auto_integration.SetValue(True)
+        number_of_scans_label = wx.StaticText(self.left_panel, -1,
+                                              "Scans to Average")
+
+        # average number of scans controls
+        self.number_of_scans_to_avg = wx.SpinCtrl(
+            self.left_panel, value='1', min=1, max=100, size=(120, -1))
+
+        # graph mode and unit controls
+        self.relative = wx.RadioButton(
+            self.left_panel, label="Relative", style=wx.RB_GROUP)
+        self.relative.SetValue(True)
+        self.r_t = wx.RadioButton(
+            self.left_panel, label="Refl./Trans.")
+
+        self.energy_flux = wx.RadioButton(
+            self.left_panel, label="Energy Flux Density")
+        #wm2 = wx.StaticText(self.left_panel, -1, WX_WM2_LABEL) not used for MESA 2
+
+        self.photon_flux = wx.RadioButton(
+            self.left_panel, label="Photon Flux Density")
+        #micromol = wx.StaticText(self.left_panel, -1, WX_MICROMOL_LABEL) not used for MESA 2
+
+        self.illuminance = wx.RadioButton(self.left_panel, label="Illuminance")
+        self.lux = wx.RadioButton(
+            self.left_panel, label="Lux", style=wx.RB_GROUP)
+        self.footcandle = wx.RadioButton(
+            self.left_panel, label="Footcandle")
+
+        # integration range spin controls
+        integ_range = wx.StaticText(self.left_panel, -1, "Integration Range")
+        #integ_max_text = wx.StaticText(self.left_panel, -1, "Max    ") not used for MESA 2
+        #integ_min_text = wx.StaticText(self.left_panel, -1, "Min    ") not used for MESA 2
+        self.integ_min = wx.SpinCtrl(self.left_panel, value="340", min=340,
+                                     max=819, size=(60, -1),
+                                     style=wx.TE_PROCESS_ENTER)
+        self.integ_min.Disable()
+        self.integ_max = wx.SpinCtrl(self.left_panel, value="820", min=341,
+                                     max=820, size=(60, -1),
+                                     style=wx.TE_PROCESS_ENTER)
+        self.integ_max.Disable()
+
+        fraction_range = wx.StaticText(self.left_panel, -1, "Fractional Range")
+        #fraction_max_text = wx.StaticText(self.left_panel, -1, "Max    ") not used for MESA 2
+        #fraction_min_text = wx.StaticText(self.left_panel, -1, "Min    ") not used for MESA 2
+        self.fraction_min = wx.SpinCtrl(self.left_panel, value="340", min=340,
+                                        max=819, size=(60, -1),
+                                        style=wx.TE_PROCESS_ENTER)
+        self.fraction_min.Disable()
+        self.fraction_max = wx.SpinCtrl(self.left_panel, value="820", min=341,
+                                        max=820, size=(60, -1),
+                                        style=wx.TE_PROCESS_ENTER)
+        self.fraction_max.Disable()
+
+        # axes limits controls
+        y_axes = wx.StaticText(self.left_panel, -1, "Y Axes Limits")
+        self.y_axis_min = wx.SpinCtrlDouble(self.left_panel,  min=-16383,
+                                            max=16382, size=(60, -1), inc=0.01,
+                                            style=wx.TE_PROCESS_ENTER)
+        self.y_axis_max = wx.SpinCtrlDouble(self.left_panel, min=-16382,
+                                            max=16383, size=(60, -1), inc=0.01,
+                                            style=wx.TE_PROCESS_ENTER)
+        x_axes = wx.StaticText(self.left_panel, -1, "X Axes Limits")
+        self.x_axis_min = wx.SpinCtrlDouble(self.left_panel, min=300, inc=0.01,
+                                            max=1139, size=(60, -1),
+                                            style=wx.TE_PROCESS_ENTER)
+        self.x_axis_max = wx.SpinCtrlDouble(self.left_panel, min=301, inc=0.01,
+                                            max=1140, size=(60, -1),
+                                            style=wx.TE_PROCESS_ENTER)
+
+        # the next 10 lines are MESA 2 specific
+        self.integration_time.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.number_of_scans_to_avg.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.integ_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.integ_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.fraction_min.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.fraction_max.Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.y_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.y_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.x_axis_min.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
+        self.x_axis_max.GetChildren()[0].Bind(wx.EVT_SET_FOCUS, self.number_pad)
+
+
+        # toggle button plot options
+        self.set_auto_scale(en=False)
+        self.auto_scale_toggle = wx.ToggleButton(self.left_panel, -1,
+                                                 "Auto Scale", size=(120, -1))
+        self.auto_scale_toggle.SetValue(True)
+        self.color_map = wx.ToggleButton(
+            self.left_panel, -1, "Map Color Range", size=(120, -1))
+        self.reset_button = wx.Button(self.left_panel, -1, label="Reset Plot",
+                                      size=(120, -1))
+        self.show_average_button = wx.ToggleButton(
+            self.left_panel, -1, "Show Average", size=(120, -1))
+        self.show_average_button.Disable()
+
+        # all controls have been created. now its time to add them all to the 
+        # sizers in a nice layout
+        self.vertical_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.vertical_sizer.Add(integration_time_label, 0,
+                                wx.ALIGN_CENTER | wx.ALL)
+        self.vertical_sizer.Add(self.integration_time, 0,
+                                wx.ALIGN_CENTER | wx.ALL)
+        self.vertical_sizer.Add(self.auto_integration, 0,
+                                wx.ALIGN_CENTER | wx.ALL, 1)
+        divider = wx.StaticLine(self.left_panel, -1)
+        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
+
+        self.vertical_sizer.Add(number_of_scans_label, 0,
+                                wx.ALIGN_CENTER | wx.ALL)
+        self.vertical_sizer.Add(self.number_of_scans_to_avg, 0,
+                                wx.ALIGN_CENTER | wx.ALL)
+
+        divider = wx.StaticLine(self.left_panel, -1)
+        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
+
+        self.vertical_sizer.Add(self.relative, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        self.vertical_sizer.Add(self.r_t, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        self.vertical_sizer.Add(self.energy_flux, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        #h_sizer = wx.BoxSizer(wx.HORIZONTAL) not used for MESA 2
+        #h_sizer.AddSpacer(20)
+        #h_sizer.Add(wm2, 0, wx.ALIGN_LEFT | wx.ALL)
+        #self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
+        self.vertical_sizer.Add(self.photon_flux, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        #h_sizer = wx.BoxSizer(wx.HORIZONTAL) not used for MESA 2
+        #h_sizer.AddSpacer(20)
+        #h_sizer.Add(micromol, 0, wx.ALIGN_LEFT | wx.ALL)
+        #self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
+        self.vertical_sizer.Add(self.illuminance, 0, wx.ALIGN_LEFT | wx.ALL, 2)
+        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        h_sizer.AddSpacer(20)
+        h_sizer.Add(self.lux, 0, wx.ALIGN_LEFT | wx.ALL)
+        self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
+        h_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        h_sizer.AddSpacer(20)
+        h_sizer.Add(self.footcandle, 0, wx.ALIGN_LEFT | wx.ALL)
+        self.vertical_sizer.Add(h_sizer, 0, wx.ALIGN_LEFT | wx.ALL)
+
+        self.vertical_sizer.Add(integ_range, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+
+        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+
+        horizontal_sizer.Add(
+            self.integ_min, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        horizontal_sizer.Add(
+            self.integ_max, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        self.vertical_sizer.Add(
+            horizontal_sizer, 0,  wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+
+        self.vertical_sizer.Add(fraction_range, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        horizontal_sizer.Add(
+            self.fraction_min, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        horizontal_sizer.Add(
+            self.fraction_max, 0, wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        self.vertical_sizer.Add(
+            horizontal_sizer, 0,  wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+
+        divider = wx.StaticLine(self.left_panel, -1)
+        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
+
+        self.vertical_sizer.Add(y_axes, 0,
+                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        horizontal_sizer.Add(self.y_axis_min, 0, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer.Add(self.y_axis_max, 0, wx.ALIGN_CENTER | wx.ALL)
+        self.vertical_sizer.Add(horizontal_sizer, 0,
+                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        self.vertical_sizer.AddSpacer(5)
+
+        self.vertical_sizer.Add(x_axes, 0,
+                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+        horizontal_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        horizontal_sizer.Add(self.x_axis_min, 0, wx.ALIGN_CENTER | wx.ALL)
+        horizontal_sizer.Add(self.x_axis_max, 0, wx.ALIGN_CENTER | wx.ALL)
+        self.vertical_sizer.Add(horizontal_sizer, 0,
+                                wx.ALIGN_CENTER | wx.ALIGN_TOP | wx.ALL)
+
+        divider = wx.StaticLine(self.left_panel, -1)
+        self.vertical_sizer.Add(divider, 0, wx.EXPAND | wx.ALL, border=5)
+
+        self.vertical_sizer.Add(
+            self.auto_scale_toggle, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+        self.vertical_sizer.Add(
+            self.color_map, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+        self.vertical_sizer.Add(self.reset_button, 0,
+                                wx.ALIGN_CENTER | wx.ALL, 1)
+        self.vertical_sizer.Add(
+            self.show_average_button, 0, wx.ALIGN_CENTER | wx.ALL, 1)
+
+        # set the sizer of the left panel
+        self.left_panel.SetSizer(self.vertical_sizer)
+        self.left_panel.Bind(wx.EVT_SCROLL, self.left_panel.Sizer.Layout)
+
+        # i'm putting these binding here because I don't want to create a
+        # workaround from GraphPanel.py -> ASInteraction.py -> ASControl.py ->
+        # ASPresentation.py.
+        # All other bindings are found in ASInteraction.py
+        self.frame.Bind(CUSTOM_EVT, self.update_status_bar_coords)
+        self.frame.Bind(EVT_ERROR, self.give_event_error)
+        self.frame.Bind(PLOT_EVT, self.plot_event_data)
+        self.frame.Bind(STATUS_EVT, self.status_bar_event)
+        self.frame.Bind(TOOLBAR_EVT, self.enable_toolbar_controls)
+
+        self.set_presented_limits(self.graph_panel.x_axis_limits,
+                                  self.graph_panel.y_axis_limits)
+
+        # show and maximize frame
+        self.left_panel.SetupScrolling()
+        self.frame.Show()
+        self.frame.Maximize()
+
+    # these functions are MESA 2 specific
+
+    def on_left_down(self, event):
+        self.left_panel.scroller.Start(event.GetPosition())
+
+    def on_left_up(self, event):
+        self.left_panel.scroller.Stop()
 
     def number_pad(self, widget):
         from constants import SERVICED

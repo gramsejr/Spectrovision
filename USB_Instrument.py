@@ -14,7 +14,6 @@ from constants import *
 class Commands(object):
     def __init__(self):
         pass
-
     @property
     def HEADER(self):
         """
@@ -44,7 +43,6 @@ class Commands(object):
             '\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
             '\x14\x00\x00\x00'
         ]
-
     @property
     def FOOTER(self):
         """
@@ -76,22 +74,26 @@ BT = -0.05766351
 CT = -0.62085660
 
 STS_CMD = {
-    'get_spectrum':      '\x00\x10\x10\x00',
-    'set_integ':         '\x10\x00\x11\x00',
-    'get_avg_scans':     '\x00\x00\x12\x00',
-    'set_avg_scans':     '\x10\x00\x12\x00',
-    'get_wavelen_coeff': '\x01\x01\x18\x00',
-    'set_wavelen_coeff': '\x11\x01\x18\x00',
-    'get_irrad_calib':   '\x01\x20\x18\x00',
-    'set_irrad_calib':   '\x11\x20\x18\x00',
-    'get_hot_pixels':    '\x00\x60\x18\x00',
-    'set_hot_pixels':    '\x10\x60\x18\x00',
-    'read_temperature':  '\x01\x00\x40\x00',
-    'get_dev_alias':     '\x00\x02\x00\x00',
-    'set_dev_alias':     '\x10\x02\x00\x00',
-    'reset_spec':        '\x00\x00\x00\x00',
-    "set_dev_serial":    '\x10\x03\x00\x00',
-    "get_dev_serial":    '\x02\x03\x00\x00'
+    'get_spectrum':              '\x00\x10\x10\x00',
+    'set_integ':                 '\x10\x00\x11\x00',
+    'get_avg_scans':             '\x00\x00\x12\x00',
+    'set_avg_scans':             '\x10\x00\x12\x00',
+    'get_wavelen_coeff':         '\x01\x01\x18\x00',
+    'set_wavelen_coeff':         '\x11\x01\x18\x00',
+    'get_irrad_calib':           '\x01\x20\x18\x00',
+    'set_irrad_calib':           '\x11\x20\x18\x00',
+    'get_hot_pixels':            '\x00\x60\x18\x00',
+    'set_hot_pixels':            '\x10\x60\x18\x00',
+    'read_temperature':          '\x01\x00\x40\x00',
+    'get_dev_alias':             '\x00\x02\x00\x00',
+    'set_dev_alias':             '\x10\x02\x00\x00',
+    'reset_spec':                '\x00\x00\x00\x00',
+    'reset_to_default_settings': '\x01\x00\x00\x00',
+    "set_dev_serial":            '\x10\x03\x00\x00',
+    "get_dev_serial":            '\x02\x03\x00\x00',
+    'set_rs232_baudrate':        '\x10\x08\x00\x00',
+    'get_rs232_baudrate':        '\x00\x08\x00\x00',
+    'save_rs232_defaults':       '\xf0\x08\x00\x00'
 }
 
 ALIAS = '\xc1\xc0\x00\x10\x00\x00\x00\x00\x00\x02\x00\x00\xde\xad\xbe\xef' \
@@ -169,6 +171,7 @@ class Instrument(object):
         corresponding actual wavelengths. These values are used for interpolation
         in the correct_data method"""
         self.calib_coeff = self.get_calibration_coefficients()
+        self.wavelength_indices = []
         if self.calib_coeff[0] > 600:
             self.x_data = range(635, 1101)
             self.sensor_type = 'NIR'
@@ -183,10 +186,12 @@ class Instrument(object):
             prev = self.pixel_to_wavelength(pixel_index - 1)
             if pixel_index in self.dark_pixels:
                 if pixel_index < 1023:
-                    pixel_index += 1
+                    while pixel_index in self.dark_pixels:
+                        pixel_index += 1
                     wavelen = self.pixel_to_wavelength(pixel_index)
                 else:
-                    pixel_index -= 1
+                    while pixel_index in self.dark_pixels:
+                        pixel_index -= 1
                     wavelen = self.pixel_to_wavelength(pixel_index)
                     prev = self.pixel_to_wavelength(pixel_index - 1)
             self.wavelength_indices.append(
@@ -401,7 +406,10 @@ class Instrument(object):
         msg[4] = STS_CMD['get_spectrum']
         msg = msg + self.cmd.FOOTER
         self.write(''.join(msg))
-        sleep((self.prev_integ/1000000.0 + 0.01) * self.avg_scans)
+        inc = ((self.prev_integ/1000000.0 + 0.01) * self.avg_scans)/10
+        for i in range(10):
+            sleep(inc)
+            wx.YieldIfNeeded()
         ret = self.read()
         if ret is None:
             ret = self.read()
@@ -440,6 +448,17 @@ class Instrument(object):
                     "Could not read from device."
                     "\nPlease try again. If this problem persists,"
                     "\ntry resetting your Spectroradiometer.")
+        i = 0
+        while ret == 'Semphore Locked' and i < 50:
+            sleep(0.1)
+            ret = self.read()
+            i += 1
+        if ret is None:
+            self.flush_buffer()
+            raise DeviceCommunicationError(
+                "Could not read from device."
+                "\nPlease try again. If this problem persists,"
+                "\ntry resetting your Spectroradiometer.")
         data = [ret[i] + (ret[i+1] << 8) for i in range(0, len(ret), 2)]
         prev = self.prev_integ
         if self.auto_integration:
@@ -661,6 +680,31 @@ class Instrument(object):
                 return
         self.dark_pixels = [ret[i] + (ret[i+1] << 8) for i in range(0, len(ret), 2)]
 
+    def wavelength_to_pixel(self, wavelength):
+        for pixel in range(1024):
+            estimated_wavelength = self.calib_coeff[0] + \
+               self.calib_coeff[1] * pixel + \
+               self.calib_coeff[2] * pixel ** 2 + \
+               self.calib_coeff[3] * pixel ** 3
+            if wavelength >= estimated_wavelength:
+                continue
+            else:
+                return pixel
+
+    def add_hot_pixel_at_wavelength(self, wavelength, add_one=False):
+        pixel = self.wavelength_to_pixel(wavelength)
+        if add_one:
+            pixel += 1
+        if pixel not in self.dark_pixels:
+            self.dark_pixels.append(pixel)
+            self.dark_pixels.sort()
+            self.set_hot_pixel_indices(self.dark_pixels)
+            # rebuild the wavelength indices with new dark pixels
+            # to get rid of the errent wavelength
+            self.build_wavelength_indices()
+            return True
+        return False
+
     def set_hot_pixel_indices(self, new_indices):
         """Request has up to 58 x 2-byte integers for pixel indices. No reply."""
         new_indices = ''.join(
@@ -675,6 +719,35 @@ class Instrument(object):
             msg += new_indices
         msg += self.cmd.FOOTER
         self.write(''.join(msg))
+
+    def reset_default_settings(self):
+        msg = self.cmd.HEADER
+        msg[4] = STS_CMD['reset_to_default_settings']
+        msg += self.cmd.FOOTER
+        self.write(''.join(msg))
+        sleep(5)
+
+    def change_rs232_baudrate(self, baudrate):
+        msg = self.cmd.HEADER
+        msg[4] = STS_CMD['set_rs232_baudrate']
+        baudrate_str = struct.pack('1L', baudrate)
+        msg += self.cmd.FOOTER
+        msg[8] = chr(4)
+        msg[9] = baudrate_str + ''.join(['\x00'] * (16 - len(baudrate_str)))
+        msg += self.cmd.FOOTER
+        self.write(''.join(msg))
+        msg = self.cmd.HEADER
+        msg[4] = STS_CMD['get_rs232_baudrate']
+        msg += self.cmd.FOOTER
+        self.write(''.join(msg))
+        returned_baudrate = self.read()
+        returned_baudrate = returned_baudrate[0] + (returned_baudrate[1] << 8) \
+            + (returned_baudrate[2] << 16) + (returned_baudrate[3] << 24)
+        if baudrate == returned_baudrate:
+            msg = self.cmd.HEADER
+            msg[4] = STS_CMD['save_rs232_defaults']
+            msg += self.cmd.FOOTER
+            self.write(''.join(msg))
 
     def reset_spec(self):
         """Reset the spectroradiometer. Used to help clear errors on the spec."""
